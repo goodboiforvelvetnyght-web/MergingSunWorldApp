@@ -88,8 +88,10 @@ gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_ACCOUNT" --project="
 
 # Firebase's first unattended deployment needs an artifact repository cleanup policy.
 # Preserve all existing policies. Add the seven-day policy only when none exist.
-repositories=$(gcloud artifacts repositories list --project="$PROJECT" --location="$REGION" --format='value(name)')
-if ! printf '%s\n' "$repositories" | grep -Fxq "projects/$PROJECT/locations/$REGION/repositories/gcf-artifacts"; then
+# gcloud may render names as short IDs or resource paths using a project number.
+# The list is already scoped to our project and region, so compare the final ID.
+repositories=$(gcloud artifacts repositories list --project="$PROJECT" --location="$REGION" --format='value(name.basename())')
+if ! printf '%s\n' "$repositories" | grep -Fxq 'gcf-artifacts'; then
   gcloud artifacts repositories create gcf-artifacts --project="$PROJECT" --location="$REGION" --repository-format=docker --description='Cloud Functions build artifacts' --quiet
 fi
 policies=$(gcloud artifacts repositories describe gcf-artifacts --project="$PROJECT" --location="$REGION" --format='json(cleanupPolicies)')

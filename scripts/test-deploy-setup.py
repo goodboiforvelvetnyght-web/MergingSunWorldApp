@@ -21,7 +21,16 @@ elif args[:3] == ['iam','service-accounts','list']:
 elif args[:2] == ['builds','get-default-service-account']: print('277886772831-compute@developer.gserviceaccount.com')
 elif args[:3] == ['iam','workload-identity-pools','list'] and mode=='existing': print('projects/277886772831/locations/global/workloadIdentityPools/merging-sun-github')
 elif args[:4] == ['iam','workload-identity-pools','providers','list'] and mode=='existing': print('projects/277886772831/locations/global/workloadIdentityPools/merging-sun-github/providers/github')
-elif args[:3] == ['artifacts','repositories','list'] and mode=='existing': print('projects/mergingsunapp-2/locations/asia-southeast1/repositories/gcf-artifacts')
+elif args[:3] == ['artifacts','repositories','list']:
+ if mode=='artifact-list-fails': sys.exit(1)
+ names = {
+  'existing':'projects/mergingsunapp-2/locations/asia-southeast1/repositories/gcf-artifacts',
+  'existing-number':'projects/277886772831/locations/asia-southeast1/repositories/gcf-artifacts',
+  'existing-short':'gcf-artifacts',
+ }
+ if mode in names:
+  name=names[mode]
+  print(name.rsplit('/',1)[-1] if '--format=value(name.basename())' in args else name)
 elif args[:3] == ['artifacts','repositories','describe']: print(json.dumps({'cleanupPolicies':{'existing-policy':{'action':'DELETE'}}} if mode=='existing' else {}))
 '''
 
@@ -66,6 +75,21 @@ class SetupTests(unittest.TestCase):
                 result,commands=self.run_setup(mode)
                 self.assertNotEqual(result.returncode,0)
                 self.assertFalse(any('enable' in c or 'create' in c or 'add-iam-policy-binding' in c for c in commands))
+
+    def test_existing_artifact_repository_name_formats(self):
+        for mode in ['existing-number','existing-short']:
+            with self.subTest(mode=mode):
+                result,commands=self.run_setup(mode)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertFalse(any(c[:3]==['artifacts','repositories','create'] for c in commands))
+                self.assertTrue(any(c[:3]==['artifacts','repositories','set-cleanup-policies'] for c in commands))
+
+    def test_artifact_access_failure_does_not_create_repository(self):
+        result,commands=self.run_setup('artifact-list-fails')
+        self.assertNotEqual(result.returncode,0)
+        self.assertNotIn('Google setup complete',result.stdout)
+        self.assertFalse(any(c[:3]==['artifacts','repositories','create'] for c in commands))
+        self.assertFalse(any(c[:3]==['artifacts','repositories','set-cleanup-policies'] for c in commands))
 
     def test_access_failure_is_not_treated_as_absence(self):
         result,commands=self.run_setup('list-fails')
