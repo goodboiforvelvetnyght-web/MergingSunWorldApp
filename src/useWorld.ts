@@ -12,6 +12,7 @@ import { httpsCallable } from "firebase/functions";
 import { auth, db, functions } from "./firebase";
 import {
   DEFAULT_WORLD,
+  normalizeWorld,
   type Character,
   type World,
   type Journey,
@@ -47,7 +48,7 @@ export function useCloud() {
         doc(db, "worlds", "main"),
         { includeMetadataChanges: true },
         (s) => {
-          setWorld((s.data() as World) || DEFAULT_WORLD);
+          setWorld(normalizeWorld((s.data() as World) || DEFAULT_WORLD));
           setStatus(s.metadata.fromCache ? "unavailable" : "connected");
         },
         () => setStatus("unavailable"),

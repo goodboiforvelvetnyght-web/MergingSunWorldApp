@@ -2,22 +2,24 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
 import { Modal } from "./Modal";
 import { LoreEditor } from "./LoreEditor";
-import { type Location } from "../../shared/world";
+import { type Location, type Kingdom } from "../../shared/world";
 import { readLocal, saveLocal } from "../useWorld";
 export default function LocationForm({
   location,
   scope,
+  kingdoms,
   onClose,
   onSave,
   onDelete,
 }: {
   location: Location;
   scope: string;
+  kingdoms: Kingdom[];
   onClose: () => void;
   onSave: (l: Location) => void;
   onDelete: () => void;
 }) {
-  const storageKey = `ms:location-draft:${scope}:${location.id}`;
+  const storageKey = `ms:settlement-draft:v2:${scope}:${location.id}`;
   const [value, setValue] = useState<Location>(() =>
       readLocal(storageKey, location),
     ),
@@ -31,7 +33,12 @@ export default function LocationForm({
     setValue((prev) => ({ ...prev, [k]: v }));
   function submit(e: FormEvent) {
     e.preventDefault();
-    onSave(value);
+    onSave({
+      ...value,
+      entries: location.entries,
+      region:
+        kingdoms.find((k) => k.id === value.kingdomId)?.name ?? value.region,
+    });
     try {
       localStorage.removeItem(storageKey);
     } catch {}
@@ -39,7 +46,7 @@ export default function LocationForm({
   }
   return (
     <Modal
-      title="Write a place into the world"
+      title="Settlement details"
       subtitle="Place details and lore · Draft saved in this browser"
       onClose={onClose}
       wide
@@ -47,7 +54,7 @@ export default function LocationForm({
       <form onSubmit={submit} className="form-stack">
         <div className="form-row">
           <label>
-            Location name
+            Settlement name
             <input
               required
               maxLength={80}
@@ -58,6 +65,7 @@ export default function LocationForm({
           <label>
             Type
             <select
+              aria-label="Type"
               value={value.kind}
               onChange={(e) =>
                 field("kind", e.target.value as Location["kind"])
@@ -65,18 +73,35 @@ export default function LocationForm({
             >
               <option value="town">Town</option>
               <option value="city">City</option>
-              <option value="landmark">Landmark</option>
+              <option value="village">Village</option>
+              {value.kind === "landmark" && (
+                <option value="landmark">Landmark (existing place)</option>
+              )}
             </select>
           </label>
         </div>
         <label>
-          Region or kingdom
-          <input
-            maxLength={80}
-            value={value.region}
-            onChange={(e) => field("region", e.target.value)}
-          />
+          Allegiance
+          <select
+            aria-label="Allegiance"
+            required
+            value={value.kingdomId ?? ""}
+            onChange={(e) => field("kingdomId", e.target.value)}
+          >
+            <option value="" disabled>
+              Choose a kingdom
+            </option>
+            {kingdoms.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name}
+              </option>
+            ))}
+          </select>
         </label>
+        <p className="fine-print">
+          Changing allegiance moves this settlement and its internal locations
+          to that kingdom. Map positions and borders stay the same.
+        </p>
         <label>
           Short description
           <input
@@ -134,7 +159,11 @@ export default function LocationForm({
           </span>
           <button
             className="button primary"
-            disabled={!value.name.trim() || value.lore.length > 60000}
+            disabled={
+              !value.name.trim() ||
+              !kingdoms.some((k) => k.id === value.kingdomId) ||
+              value.lore.length > 60000
+            }
           >
             <Save size={16} /> Save to world draft
           </button>
@@ -145,7 +174,12 @@ export default function LocationForm({
         <div className="danger-area">
           {confirm ? (
             <>
-              <span>Remove this location from the draft?</span>
+              <span>
+                Delete {location.name || "this settlement"} and its{" "}
+                {location.entries.length} internal locations? Characters stay on
+                their current hex. This takes effect when the world is
+                published.
+              </span>
               <button
                 type="button"
                 className="text-button danger"
@@ -154,7 +188,7 @@ export default function LocationForm({
                   onClose();
                 }}
               >
-                Yes, remove
+                Delete settlement and contents
               </button>
               <button
                 type="button"
@@ -170,7 +204,7 @@ export default function LocationForm({
               className="text-button danger"
               onClick={() => setConfirm(true)}
             >
-              Delete location
+              Delete settlement
             </button>
           )}
         </div>

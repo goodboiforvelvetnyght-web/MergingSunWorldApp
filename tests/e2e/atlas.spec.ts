@@ -72,7 +72,7 @@ test("editor saves lore and adding a river modifier supports undo", async ({
   await page.getByRole("button", { name: "World editor", exact: true }).click();
   await page.locator('.location-marker[title="Thornwatch"]').click();
   await page.getByRole("button", { name: "Edit place" }).click();
-  await page.getByLabel("Location name").fill("Thornwatch Haven");
+  await page.getByLabel("Settlement name").fill("Thornwatch Haven");
   await page
     .getByRole("textbox", { name: "Location lore" })
     .fill("A welcoming haven for travelers.");
@@ -82,6 +82,7 @@ test("editor saves lore and adding a river modifier supports undo", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Save local world" }).click();
   await page.getByRole("button", { name: "Close location details" }).click();
+  await page.getByRole("button", { name: "Landscape", exact: true }).click();
   await page.getByRole("button", { name: "Add river", exact: true }).click();
   const map = page.getByTestId("world-map");
   const box = (await map.boundingBox())!;
@@ -116,7 +117,8 @@ test("grid change returns traveler to original settlement without charging energ
   });
   await page.reload();
   await page.getByRole("button", { name: "World editor", exact: true }).click();
-  await page.getByRole("button", { name: "Grid & territories" }).click();
+  await page.getByRole("button", { name: "Landscape", exact: true }).click();
+  await page.getByRole("button", { name: "Grid settings" }).click();
   await page.getByRole("slider", { name: "Hex radius" }).fill("48");
   await page.getByRole("button", { name: "Save local world" }).click();
   await expect(
@@ -183,6 +185,7 @@ test("touch terrain painting works on occupied tiles and can be erased", async (
   const page = await context.newPage();
   await page.goto(baseURL!);
   await page.getByRole("button", { name: "World editor", exact: true }).tap();
+  await page.getByRole("button", { name: "Landscape", exact: true }).tap();
   await page.getByRole("button", { name: "Add river", exact: true }).tap();
   await page.getByRole("button", { name: "Close sidebar" }).tap();
   await expect(page.locator(".sidebar")).not.toBeInViewport();

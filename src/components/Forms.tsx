@@ -94,6 +94,12 @@ export function CharacterForm({
               ))}
           </select>
         </label>
+        {!locationId && (
+          <p role="status" className="info-note">
+            No starting settlement is available yet. An editor needs to add one
+            before you can create a character.
+          </p>
+        )}
         <div className="info-note">
           <MapPin size={18} />
           You’ll begin with 100 energy. Walking costs depend on the terrain you

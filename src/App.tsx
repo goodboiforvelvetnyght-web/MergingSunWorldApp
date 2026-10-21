@@ -39,7 +39,6 @@ import {
   Redo2,
   Brush,
   MousePointer2,
-  Flag,
   Save,
   Download,
   LogOut,
@@ -48,7 +47,6 @@ import {
   Clock,
   Link as LinkIcon,
   LoaderCircle,
-  Trash2,
   Shield,
   ChevronUp,
 } from "lucide-react";
@@ -59,6 +57,7 @@ import {
 } from "./components/WorldMap";
 import { AuthModal } from "./components/AuthModal";
 import { Modal } from "./components/Modal";
+import { PlacesEditor } from "./components/PlacesEditor";
 import { CharacterForm } from "./components/Forms";
 const LocationForm = lazy(() => import("./components/LocationForm"));
 import {
@@ -71,6 +70,8 @@ import {
 import { auth } from "./firebase";
 import {
   DEFAULT_WORLD,
+  normalizeWorld,
+  characterAfterWorldChange,
   MAX_ENERGY,
   REGEN_MS,
   KM_PER_HEX,
@@ -89,6 +90,8 @@ import {
   makeCharacter,
   locationLabel,
   type World,
+  type Kingdom,
+  type PlaceEntry,
   type Character,
   type Location,
   type Journey,
@@ -96,7 +99,12 @@ import {
   type Terrain,
   type Point,
 } from "../shared/world";
-const icons = { city: Castle, town: MapPin, landmark: Compass };
+const icons = {
+  city: Castle,
+  town: MapPin,
+  village: MapPin,
+  landmark: Compass,
+};
 const terrainIcons = {
   plains: Sun,
   forest: Trees,
@@ -115,7 +123,7 @@ export default function App() {
   const cloud = useCloud(),
     isDemo = !cloud.user;
   const [localWorld, setLocalWorld] = useState<World>(() =>
-    readLocal("ms:world:v1", DEFAULT_WORLD),
+    normalizeWorld(readLocal("ms:world:v1", DEFAULT_WORLD)),
   );
   const [demoCharacter, setDemoCharacter] = useState<Character | null>(() =>
     readLocal("ms:character:v1", demoStart()),
@@ -151,8 +159,12 @@ export default function App() {
     [paintTerrain, setPaintTerrain] = useState<Terrain>("plains"),
     [brushSize, setBrushSize] = useState(1),
     [draftBorder, setDraftBorder] = useState<Point[]>([]),
-    [borderName, setBorderName] = useState(""),
-    [borderColor, setBorderColor] = useState("#a77845");
+    [kingdomEdit, setKingdomEdit] = useState<Kingdom | null>(null),
+    [placementKingdom, setPlacementKingdom] = useState<string | null>(null),
+    [editorCategory, setEditorCategory] = useState<"landscape" | "places">(
+      "places",
+    ),
+    [viewEntry, setViewEntry] = useState<PlaceEntry | null>(null);
   const [editLocation, setEditLocation] = useState<Location | null>(null),
     [busy, setBusy] = useState(false),
     [toast, setToast] = useState<{ text: string; error?: boolean } | null>(
@@ -210,6 +222,9 @@ export default function App() {
     setFuture([]);
     setTravelConfirm(false);
     setEditLocation(null);
+    setKingdomEdit(null);
+    setTool("pan");
+    setDraftBorder([]);
   }, [cloud.user?.uid]);
   useEffect(() => {
     const handler = () =>
@@ -297,7 +312,7 @@ export default function App() {
       );
       setDraft(
         saved && saved.version === published.version
-          ? saved
+          ? normalizeWorld(saved)
           : structuredClone(published),
       );
       setPast([]);
@@ -312,7 +327,7 @@ export default function App() {
   }, []);
   function changeWorld(next: World) {
     checkpoint();
-    setDraft(next);
+    setDraft(normalizeWorld(next));
   }
   const paint = useCallback(
     (h: Hex) => {
@@ -361,50 +376,48 @@ export default function App() {
     }
     setBusy(true);
     try {
-      if (!draft.locations.some((l) => l.starting))
-        throw new Error("Keep at least one starting settlement.");
       for (const l of draft.locations.filter((l) => l.starting))
         if (tileAt(hexAt(l, draft), draft).terrain === "water")
           throw new Error("Starting settlements must be walkable.");
-      if (
-        character &&
-        !draft.locations.some((l) => l.id === character.originLocationId)
-      )
-        throw new Error("Keep your traveler’s original starting settlement.");
-      if (
-        character &&
-        !geometryChanged &&
-        tileAt(hexAt(character, draft), draft).terrain === "water"
-      )
-        throw new Error("Your traveler’s current tile must remain walkable.");
+      if (character) {
+        const updated = characterAfterWorldChange(
+          character,
+          draft,
+          geometryChanged,
+        );
+        if (tileAt(hexAt(updated, draft), draft).terrain === "water")
+          throw new Error(
+            "Your traveler’s tile or grid-reset destination must remain walkable.",
+          );
+      }
       let next: World;
       if (isDemo) {
         next = { ...draft, version: published.version + 1 };
         saveLocal("ms:world-backup:v1", published);
-        if (geometryChanged && demoCharacter) {
-          const origin = next.locations.find(
-            (l) => l.id === demoCharacter.originLocationId,
-          )!;
-          if (tileAt(hexAt(origin, next), next).terrain === "water")
-            throw new Error(
-              "The original starting settlement must remain walkable.",
-            );
-          setDemoCharacter({
-            ...demoCharacter,
-            ...center(hexAt(origin, next), next),
-          });
-          setDemoJourneys((list) =>
-            [
-              {
-                id: crypto.randomUUID(),
-                from: locationLabel(demoCharacter, published),
-                to: `${origin.name} (grid reset)`,
-                cost: 0,
-                at: Date.now(),
-              },
-              ...list,
-            ].slice(0, 20),
+        if (demoCharacter) {
+          const updated = characterAfterWorldChange(
+            demoCharacter,
+            next,
+            geometryChanged,
           );
+          setDemoCharacter(updated);
+          if (geometryChanged && updated.originLocationId) {
+            const origin = next.locations.find(
+              (l) => l.id === updated.originLocationId,
+            )!;
+            setDemoJourneys((list) =>
+              [
+                {
+                  id: crypto.randomUUID(),
+                  from: locationLabel(demoCharacter, published),
+                  to: `${origin.name} (grid reset)`,
+                  cost: 0,
+                  at: Date.now(),
+                },
+                ...list,
+              ].slice(0, 20),
+            );
+          }
         }
         setLocalWorld(next);
       } else next = await call<World>("publishWorld", { world: draft });
@@ -523,35 +536,54 @@ export default function App() {
     notice("World exported, including locations and lore.");
   }
   function addLocation(p: Point) {
+    const kingdom = draft?.territories.find((k) => k.id === placementKingdom);
+    if (!kingdom) {
+      notice("Choose a kingdom before adding a settlement.", true);
+      return;
+    }
+    setTool("pan");
     setEditLocation({
       id: `place-${crypto.randomUUID().slice(0, 8)}`,
       name: "",
       kind: "town",
       ...p,
-      region: "",
+      kingdomId: kingdom.id,
+      entries: [],
+      region: kingdom.name,
       summary: "",
       lore: "<p>Every place has a story.</p>",
       starting: false,
     });
   }
   function finishBorder() {
-    if (!draft || draftBorder.length < 3 || !borderName.trim()) return;
+    if (
+      !draft ||
+      !kingdomEdit ||
+      draftBorder.length < 3 ||
+      draftBorder.length > 150 ||
+      !kingdomEdit.name.trim()
+    )
+      return;
+    const kingdom = {
+      ...kingdomEdit,
+      name: kingdomEdit.name.trim(),
+      points: draftBorder,
+    };
     changeWorld({
       ...draft,
-      territories: [
-        ...draft.territories,
-        {
-          id: crypto.randomUUID(),
-          name: borderName.trim(),
-          color: borderColor,
-          points: draftBorder,
-        },
-      ],
+      territories: draft.territories.some((k) => k.id === kingdom.id)
+        ? draft.territories.map((k) => (k.id === kingdom.id ? kingdom : k))
+        : [...draft.territories, kingdom],
     });
+    setKingdomEdit(null);
     setDraftBorder([]);
-    setBorderName("");
     setTool("pan");
-    notice("Territory added to the draft.");
+    notice("Kingdom and border saved to the draft.");
+  }
+  function cancelKingdomEdit() {
+    setKingdomEdit(null);
+    setDraftBorder([]);
+    setTool("pan");
   }
   function resizeGrid(radius: number, offsetX: number, offsetY: number) {
     if (!draft) return;
@@ -698,6 +730,7 @@ export default function App() {
                   { id: "all", label: "All places" },
                   { id: "city", label: "Cities" },
                   { id: "town", label: "Towns" },
+                  { id: "village", label: "Villages" },
                   { id: "landmark", label: "Landmarks" },
                 ].map((f) => (
                   <button
@@ -709,46 +742,49 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {tab === "atlas" && !query && filter === "all" && (
-                <button
-                  className="featured-card"
-                  onClick={() => {
-                    const l =
-                      world.locations.find((l) => l.id === "emberfall") ??
-                      world.locations[0];
-                    if (l) focusLocation(l);
-                  }}
-                >
-                  <div className="featured-art">
-                    <div className="feature-sun" />
-                    <div className="city-silhouette">
-                      <i />
-                      <i />
-                      <i />
-                      <i />
-                      <i />
-                      <i />
-                      <i />
+              {tab === "atlas" &&
+                !query &&
+                filter === "all" &&
+                world.locations.length > 0 && (
+                  <button
+                    className="featured-card"
+                    onClick={() => {
+                      const l =
+                        world.locations.find((l) => l.id === "emberfall") ??
+                        world.locations[0];
+                      if (l) focusLocation(l);
+                    }}
+                  >
+                    <div className="featured-art">
+                      <div className="feature-sun" />
+                      <div className="city-silhouette">
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                      </div>
+                      <span className="featured-label">
+                        BEGIN YOUR EXPLORATION
+                      </span>
                     </div>
-                    <span className="featured-label">
-                      BEGIN YOUR EXPLORATION
-                    </span>
-                  </div>
-                  <div className="featured-copy">
-                    <span className="eyebrow">THE HEART OF THE REACH</span>
-                    <h3>
-                      {world.locations.find((l) => l.id === "emberfall")
-                        ?.name ??
-                        world.locations[0]?.name ??
-                        "Discover the world"}
-                    </h3>
-                    <p>A thousand hearths. A thousand stories.</p>
-                    <span className="feature-link">
-                      Discover this place <ArrowUpRight size={16} />
-                    </span>
-                  </div>
-                </button>
-              )}
+                    <div className="featured-copy">
+                      <span className="eyebrow">THE HEART OF THE REACH</span>
+                      <h3>
+                        {world.locations.find((l) => l.id === "emberfall")
+                          ?.name ??
+                          world.locations[0]?.name ??
+                          "Discover the world"}
+                      </h3>
+                      <p>A thousand hearths. A thousand stories.</p>
+                      <span className="feature-link">
+                        Discover this place <ArrowUpRight size={16} />
+                      </span>
+                    </div>
+                  </button>
+                )}
               <div className="list-heading">
                 <span>
                   {query
@@ -828,7 +864,7 @@ export default function App() {
                       Origin ·{" "}
                       {published.locations.find(
                         (l) => l.id === character.originLocationId,
-                      )?.name ?? "Starting settlement"}
+                      )?.name ?? "No origin settlement"}
                     </small>
                     <p>
                       {character.bio || "Your story is still being written."}
@@ -958,278 +994,257 @@ export default function App() {
                   </button>
                 </span>
               </div>
-              <div className="tool-grid">
-                {(
-                  [
-                    { id: "pan", label: "Navigate", icon: MousePointer2 },
-                    { id: "terrain", label: "Terrain", icon: Brush },
-                    { id: "river", label: "Add river", icon: Waves },
-                    { id: "erase-river", label: "Erase river", icon: Minus },
-                    { id: "location", label: "Add place", icon: MapPin },
-                    { id: "border", label: "Territory", icon: Flag },
-                  ] as const
-                ).map((t) => (
+              <div
+                className="segmented editor-categories"
+                aria-label="Editor category"
+              >
+                {(["places", "landscape"] as const).map((category) => (
                   <button
-                    className={tool === t.id ? "active" : ""}
-                    key={t.id}
+                    key={category}
+                    className={editorCategory === category ? "active" : ""}
+                    aria-pressed={editorCategory === category}
                     onClick={() => {
-                      setTool(t.id);
-                      if (t.id !== "border") setDraftBorder([]);
+                      if (
+                        kingdomEdit &&
+                        !window.confirm("Discard the unsaved kingdom form?")
+                      )
+                        return;
+                      cancelKingdomEdit();
+                      setEditorCategory(category);
+                      closeDetails();
                     }}
                   >
-                    <t.icon size={19} />
-                    <span>{t.label}</span>
+                    {category === "places" ? "Places" : "Landscape"}
                   </button>
                 ))}
               </div>
-              {tool === "terrain" && (
+              {editorCategory === "places" ? (
                 <>
-                  <label className="field-label">BASE TERRAIN</label>
-                  <div className="terrain-options">
-                    {(
-                      ["plains", "forest", "mountain", "water"] as Terrain[]
-                    ).map((t) => {
-                      const Icon = terrainIcons[t];
-                      return (
-                        <button
-                          key={t}
-                          className={paintTerrain === t ? "active" : ""}
-                          onClick={() => setPaintTerrain(t)}
-                        >
-                          <Icon
-                            size={18}
-                            style={{ color: TERRAIN_COLORS[t] }}
-                          />
-                          <span>{t}</span>
-                          <small>
-                            {t === "water" ? "Blocked" : `${COSTS[t]} energy`}
-                          </small>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <PlacesEditor
+                    world={draft}
+                    onChange={changeWorld}
+                    onEditSettlement={setEditLocation}
+                    onFocus={focusLocation}
+                    onAddSettlement={(id) => {
+                      setPlacementKingdom(id);
+                      setTool("location");
+                      closeDetails();
+                      setMobileOpen(false);
+                    }}
+                    kingdomEdit={kingdomEdit}
+                    onEditKingdom={(k) => {
+                      setKingdomEdit(k);
+                      setDraftBorder(k.points);
+                      setTool("pan");
+                      closeDetails();
+                    }}
+                    onKingdomChange={setKingdomEdit}
+                    borderPoints={draftBorder}
+                    onBorderPoints={setDraftBorder}
+                    drawing={tool === "border"}
+                    onDraw={() => {
+                      setDraftBorder([]);
+                      setTool("border");
+                      setMobileOpen(false);
+                    }}
+                    onSaveKingdom={finishBorder}
+                    onCancelKingdom={cancelKingdomEdit}
+                  />
+                  {tool === "location" && (
+                    <p className="info-note">
+                      Click the map to place a settlement in{" "}
+                      {
+                        draft.territories.find((k) => k.id === placementKingdom)
+                          ?.name
+                      }
+                      .
+                    </p>
+                  )}
                 </>
-              )}
-              {["terrain", "river", "erase-river"].includes(tool) && (
+              ) : (
                 <>
-                  <label className="field-label">BRUSH SIZE</label>
-                  <div className="segmented">
-                    {[1, 2, 3].map((s) => (
+                  <div className="tool-grid">
+                    {(
+                      [
+                        { id: "pan", label: "Navigate", icon: MousePointer2 },
+                        { id: "terrain", label: "Terrain", icon: Brush },
+                        { id: "river", label: "Add river", icon: Waves },
+                        {
+                          id: "erase-river",
+                          label: "Erase river",
+                          icon: Minus,
+                        },
+                      ] as const
+                    ).map((t) => (
                       <button
-                        key={s}
-                        className={brushSize === s ? "active" : ""}
-                        onClick={() => setBrushSize(s)}
+                        className={tool === t.id ? "active" : ""}
+                        key={t.id}
+                        onClick={() => {
+                          setTool(t.id);
+                          setDraftBorder([]);
+                        }}
                       >
-                        {s === 1 ? "Single" : s === 2 ? "Small" : "Large"}
+                        <t.icon size={19} />
+                        <span>{t.label}</span>
                       </button>
                     ))}
                   </div>
-                  <div className="info-note">
-                    <Info size={17} />
-                    <span>
-                      {tool === "terrain"
-                        ? "Paint by clicking or dragging across hexes. Water blocks walking."
-                        : tool === "river"
-                          ? "Add +3 energy whenever a traveler enters a river tile."
-                          : "Remove the river modifier without changing base terrain."}
-                    </span>
-                  </div>
-                </>
-              )}
-              {tool === "location" && (
-                <div className="info-note">
-                  <MapPin size={17} />
-                  <span>
-                    Click the map to place a new location. Select an existing
-                    marker to edit its details and lore.
-                  </span>
-                </div>
-              )}
-              {tool === "pan" && (
-                <div className="info-note">
-                  <MousePointer2 size={17} />
-                  <span>
-                    Explore the draft, select locations to edit, or click a hex
-                    to test a route.
-                  </span>
-                </div>
-              )}
-              {tool === "border" && (
-                <div className="form-stack compact">
-                  <p className="fine-print">
-                    Click at least 3 points on the map to draw a kingdom or
-                    territory boundary.
-                  </p>
-                  <label>
-                    Territory name
-                    <input
-                      maxLength={80}
-                      value={borderName}
-                      onChange={(e) => setBorderName(e.target.value)}
-                      placeholder="Name this realm"
-                    />
-                  </label>
-                  <label>
-                    Boundary color
-                    <input
-                      type="color"
-                      value={borderColor}
-                      onChange={(e) => setBorderColor(e.target.value)}
-                    />
-                  </label>
-                  <div className="form-row">
-                    <button
-                      className="button secondary"
-                      disabled={!draftBorder.length}
-                      onClick={() => setDraftBorder((p) => p.slice(0, -1))}
-                    >
-                      Undo point
-                    </button>
-                    <button
-                      className="button primary"
-                      disabled={draftBorder.length < 3 || !borderName.trim()}
-                      onClick={finishBorder}
-                    >
-                      Finish ({draftBorder.length})
-                    </button>
-                  </div>
-                </div>
-              )}
-              <button
-                className="disclosure"
-                onClick={() => setGridSettings((s) => !s)}
-              >
-                <span>
-                  <Layers size={16} /> Grid & territories
-                </span>
-                {gridSettings ? (
-                  <ChevronUp size={16} />
-                ) : (
-                  <ChevronDown size={16} />
-                )}
-              </button>
-              {gridSettings && (
-                <div className="grid-settings">
-                  <label>
-                    Hex radius <strong>{draft.radius} px</strong>
-                    <input
-                      aria-label="Hex radius"
-                      type="range"
-                      min={28}
-                      max={80}
-                      step={2}
-                      value={draft.radius}
-                      onChange={(e) =>
-                        resizeGrid(
-                          Number(e.target.value),
-                          draft.offsetX,
-                          draft.offsetY,
-                        )
-                      }
-                    />
-                  </label>
-                  <div className="form-row">
-                    <label>
-                      Offset X
-                      <input
-                        aria-label="Grid offset X"
-                        type="number"
-                        min={-80}
-                        max={80}
-                        value={draft.offsetX}
-                        onChange={(e) =>
-                          resizeGrid(
-                            draft.radius,
-                            Math.max(-80, Math.min(80, Number(e.target.value))),
-                            draft.offsetY,
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      Offset Y
-                      <input
-                        aria-label="Grid offset Y"
-                        type="number"
-                        min={-80}
-                        max={80}
-                        value={draft.offsetY}
-                        onChange={(e) =>
-                          resizeGrid(
-                            draft.radius,
-                            draft.offsetX,
-                            Math.max(-80, Math.min(80, Number(e.target.value))),
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                  <p className="fine-print">
-                    Pointy-top hexes · 5 km per step. Changing grid size or
-                    alignment returns every character to their original starting
-                    settlement when published. Energy is unchanged. Paint
-                    transfers by tile center; inspect before saving.
-                  </p>
-                  <div className="territory-list">
-                    {draft.territories.map((t) => (
-                      <div key={t.id}>
-                        <input
-                          aria-label={`Name of ${t.name}`}
-                          value={t.name}
-                          maxLength={80}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              territories: draft.territories.map((item) =>
-                                item.id === t.id
-                                  ? { ...item, name: e.target.value }
-                                  : item,
-                              ),
-                            })
-                          }
-                        />
-                        <input
-                          type="color"
-                          aria-label={`Color of ${t.name}`}
-                          value={t.color}
-                          onChange={(e) =>
-                            setDraft({
-                              ...draft,
-                              territories: draft.territories.map((item) =>
-                                item.id === t.id
-                                  ? { ...item, color: e.target.value }
-                                  : item,
-                              ),
-                            })
-                          }
-                        />
-                        <button
-                          className="icon-button"
-                          aria-label={`Delete ${t.name}`}
-                          onClick={() =>
-                            changeWorld({
-                              ...draft,
-                              territories: draft.territories.filter(
-                                (item) => item.id !== t.id,
-                              ),
-                            })
-                          }
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                  {tool === "terrain" && (
+                    <>
+                      <label className="field-label">BASE TERRAIN</label>
+                      <div className="terrain-options">
+                        {(
+                          ["plains", "forest", "mountain", "water"] as Terrain[]
+                        ).map((t) => {
+                          const Icon = terrainIcons[t];
+                          return (
+                            <button
+                              key={t}
+                              className={paintTerrain === t ? "active" : ""}
+                              onClick={() => setPaintTerrain(t)}
+                            >
+                              <Icon
+                                size={18}
+                                style={{ color: TERRAIN_COLORS[t] }}
+                              />
+                              <span>{t}</span>
+                              <small>
+                                {t === "water"
+                                  ? "Blocked"
+                                  : `${COSTS[t]} energy`}
+                              </small>
+                            </button>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                  <p className="fine-print">
-                    To reshape a boundary, delete it and draw a replacement in
-                    this version.
-                  </p>
-                </div>
+                    </>
+                  )}
+                  {["terrain", "river", "erase-river"].includes(tool) && (
+                    <>
+                      <label className="field-label">BRUSH SIZE</label>
+                      <div className="segmented">
+                        {[1, 2, 3].map((s) => (
+                          <button
+                            key={s}
+                            className={brushSize === s ? "active" : ""}
+                            onClick={() => setBrushSize(s)}
+                          >
+                            {s === 1 ? "Single" : s === 2 ? "Small" : "Large"}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="info-note">
+                        <Info size={17} />
+                        <span>
+                          {tool === "terrain"
+                            ? "Paint by clicking or dragging across hexes. Water blocks walking."
+                            : tool === "river"
+                              ? "Add +3 energy whenever a traveler enters a river tile."
+                              : "Remove the river modifier without changing base terrain."}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  {tool === "pan" && (
+                    <div className="info-note">
+                      <MousePointer2 size={17} />
+                      <span>
+                        Explore the draft, select locations to edit, or click a
+                        hex to test a route.
+                      </span>
+                    </div>
+                  )}
+                  <button
+                    className="disclosure"
+                    onClick={() => setGridSettings((s) => !s)}
+                  >
+                    <span>
+                      <Layers size={16} /> Grid settings
+                    </span>
+                    {gridSettings ? (
+                      <ChevronUp size={16} />
+                    ) : (
+                      <ChevronDown size={16} />
+                    )}
+                  </button>
+                  {gridSettings && (
+                    <div className="grid-settings">
+                      <label>
+                        Hex radius <strong>{draft.radius} px</strong>
+                        <input
+                          aria-label="Hex radius"
+                          type="range"
+                          min={28}
+                          max={80}
+                          step={2}
+                          value={draft.radius}
+                          onChange={(e) =>
+                            resizeGrid(
+                              Number(e.target.value),
+                              draft.offsetX,
+                              draft.offsetY,
+                            )
+                          }
+                        />
+                      </label>
+                      <div className="form-row">
+                        <label>
+                          Offset X
+                          <input
+                            aria-label="Grid offset X"
+                            type="number"
+                            min={-80}
+                            max={80}
+                            value={draft.offsetX}
+                            onChange={(e) =>
+                              resizeGrid(
+                                draft.radius,
+                                Math.max(
+                                  -80,
+                                  Math.min(80, Number(e.target.value)),
+                                ),
+                                draft.offsetY,
+                              )
+                            }
+                          />
+                        </label>
+                        <label>
+                          Offset Y
+                          <input
+                            aria-label="Grid offset Y"
+                            type="number"
+                            min={-80}
+                            max={80}
+                            value={draft.offsetY}
+                            onChange={(e) =>
+                              resizeGrid(
+                                draft.radius,
+                                draft.offsetX,
+                                Math.max(
+                                  -80,
+                                  Math.min(80, Number(e.target.value)),
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                      <p className="fine-print">
+                        Pointy-top hexes · 5 km per step. Changing grid size or
+                        alignment returns characters with an origin to their
+                        original starting settlement when published. Characters
+                        without an origin keep their map position. Energy is
+                        unchanged. Paint transfers by tile center; inspect
+                        before saving.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
               <div className="editor-actions">
                 <button
                   className="button primary full"
-                  disabled={busy || !dirty}
+                  disabled={busy || !dirty || !!kingdomEdit}
                   onClick={() => void publish()}
                 >
                   {busy ? (
@@ -1250,7 +1265,7 @@ export default function App() {
                       setDraft(structuredClone(published));
                       setPast([]);
                       setFuture([]);
-                      setDraftBorder([]);
+                      cancelKingdomEdit();
                     }
                   }}
                 >
@@ -1270,7 +1285,10 @@ export default function App() {
                         );
                         return;
                       }
-                      changeWorld({ ...previous, version: published.version });
+                      changeWorld({
+                        ...normalizeWorld(previous),
+                        version: published.version,
+                      });
                       notice(
                         "Previous world restored into the draft. Review, then save.",
                       );
@@ -1381,13 +1399,18 @@ export default function App() {
             labels={labels}
             editor={editor}
             tool={tool}
-            draftBorder={draftBorder}
+            draftBorder={editor ? draftBorder : []}
             onSelect={selectHex}
             onLocation={selectLocation}
             onPaint={paint}
             onStroke={checkpoint}
             onPlace={addLocation}
-            onBorder={(p) => setDraftBorder((a) => [...a, p])}
+            onBorder={(p) => {
+              if (kingdomEdit)
+                setDraftBorder((points) =>
+                  points.length < 150 ? [...points, p] : points,
+                );
+            }}
             onReady={(handle) => {
               mapRef.current = handle;
               if (location) handle.focus(location);
@@ -1416,8 +1439,8 @@ export default function App() {
                   : tool === "erase-river"
                     ? "Erasing river modifiers"
                     : tool === "location"
-                      ? "Click to place a location"
-                      : "Click to draw a territory"}
+                      ? "Click to place a settlement"
+                      : "Click to draw the kingdom border"}
               <button
                 onClick={() => setTool("pan")}
                 aria-label="Stop editing tool"
@@ -1581,7 +1604,10 @@ export default function App() {
                       {editor && (
                         <button
                           className="text-button"
-                          onClick={() => setEditLocation(location)}
+                          onClick={() => {
+                            setEditorCategory("places");
+                            setEditLocation(location);
+                          }}
                         >
                           <Settings2 size={14} /> Edit place
                         </button>
@@ -1603,6 +1629,25 @@ export default function App() {
                         }),
                       }}
                     />
+                    {!!location.entries.length && (
+                      <section className="internal-entries">
+                        <h3>Within {location.name}</h3>
+                        {location.entries.map((entry) => (
+                          <button
+                            className="kingdom-card"
+                            key={entry.id}
+                            onClick={() => setViewEntry(entry)}
+                          >
+                            <BookOpen size={18} />
+                            <span>
+                              <strong>{entry.name}</strong>
+                              <small>{entry.summary}</small>
+                            </span>
+                            <ChevronRight size={14} />
+                          </button>
+                        ))}
+                      </section>
+                    )}
                   </>
                 )}
                 <div className="travel-card">
@@ -1748,6 +1793,25 @@ export default function App() {
           </button>
         </div>
       )}
+      {viewEntry && (
+        <Modal
+          title={viewEntry.name}
+          subtitle={viewEntry.summary}
+          onClose={() => setViewEntry(null)}
+          wide
+        >
+          <article
+            className="lore-content"
+            dangerouslySetInnerHTML={{
+              __html: DOMPurify.sanitize(viewEntry.lore, {
+                USE_PROFILES: { html: true },
+                FORBID_TAGS: ["style", "form", "input", "button", "iframe"],
+                FORBID_ATTR: ["style", "target"],
+              }),
+            }}
+          />
+        </Modal>
+      )}
       {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
       {characterOpen && (
         <CharacterForm
@@ -1767,7 +1831,9 @@ export default function App() {
         >
           <LocationForm
             location={editLocation}
-            scope={cloud.user?.uid ?? "demo"}
+            key={editLocation.id}
+            kingdoms={draft.territories}
+            scope={`${cloud.user?.uid ?? "demo"}:${published.version}`}
             onClose={() => setEditLocation(null)}
             onSave={(l) => {
               changeWorld({
@@ -1780,13 +1846,6 @@ export default function App() {
               notice("Location saved to your world draft.");
             }}
             onDelete={() => {
-              if (
-                draft.locations.filter((l) => l.starting).length === 1 &&
-                editLocation.starting
-              ) {
-                notice("Keep at least one starting settlement.", true);
-                return;
-              }
               changeWorld({
                 ...draft,
                 locations: draft.locations.filter(
@@ -1847,7 +1906,7 @@ export default function App() {
       {gridConfirm && (
         <Modal
           title="Publish a new grid?"
-          subtitle="All characters will return to their origins"
+          subtitle="Characters with an origin return to it"
           onClose={() => {
             if (!busy) setGridConfirm(false);
           }}
@@ -1856,9 +1915,10 @@ export default function App() {
             <div className="info-note">
               <MapPin size={20} />
               <span>
-                Changing the grid size or alignment returns every character to
-                their original starting settlement. Their energy and character
-                details stay the same.
+                Changing the grid size or alignment returns characters to their
+                original starting settlement. Characters whose origin was
+                deleted keep their map position. Energy and character details
+                stay the same.
               </span>
             </div>
             <p>

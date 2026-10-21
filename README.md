@@ -25,12 +25,22 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Hex-grid, terrain, territory, and place-label overlays.
 - One character per account, with name, title, biography, and original starting settlement.
 - Walking route previews with an energy breakdown, immediate travel, and recent journey history.
-- Terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
+- **Landscape** editor with terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
 - Location placement, position editing, rich-text lore, headings, lists, quotes, HTTPS images, and links. Lore is sanitized before display.
-- Territory polygon drawing, naming, recoloring, and deletion. Reshape a boundary by drawing its replacement.
+- **Places** editor: kingdom cards → settlements → internal encyclopedia entries, with rich lore and explicit allegiance transfers.
+- Kingdom borders are part of the kingdom. Edit coordinates or draw a replacement; borders cannot be deleted separately. No settlement/border containment calculation is performed.
+- Confirmed kingdom deletion removes its border, settlements, and their internal entries. Settlement deletion removes its entries. Characters stay in place and references to deleted places are cleared.
 - Locally autosaved world and lore drafts; explicit world publication; world JSON export. The local preview can restore its previous saved world into a draft. Connected world publication keeps server-side version backups.
 - Firebase email/password sign-up, sign-in, password reset, and server-assigned admin roles.
 - Responsive desktop and phone layouts, keyboard-accessible controls, and a `/` shortcut for search.
+
+## Places and existing world data
+
+The Places editor starts with kingdoms. Open a kingdom to add a settlement on the map, and open a settlement to add its internal encyclopedia entries. Use **Edit settlement / allegiance** to transfer it, including its entries, to another kingdom. Its position and both borders remain unchanged. Internal entries have stable IDs but no coordinates or character-stay interaction yet.
+
+World schema version 2 keeps the existing `territories` storage field for kingdom records, so border IDs are preserved. Settlements keep their IDs, coordinates, and lore, gain an explicit `kingdomId`, and contain `entries`. Existing region names are matched only to an exactly named kingdom; no geographic inference is used. Unmatched legacy places are preserved and can be assigned from inside a kingdom. Creating new independent places is deferred. Upgrades are normalized on read and persisted when an admin publishes; no automatic production content write is performed by deployment.
+
+Deleting a kingdom or settlement requires confirmation of its descendants. A transferred settlement is no longer part of its former kingdom's deletion. Character origin/current-place references are cleared only when their target is deleted; position, energy, and journey history are preserved. Deleting the final kingdom is allowed; new character creation waits for a new starting settlement.
 
 ## Rules used for the prototype
 
@@ -49,13 +59,13 @@ These are starter balancing values, defined in `shared/world.ts`:
 
 Routes minimize energy expenditure. The starting tile is free. Rivers are tile modifiers, with no directional crossing or spline mechanics. A route's distance counts its steps, including detours. Regeneration is calculated from timestamps on demand, without recurring server jobs. Travel costs and positions are calculated independently on the backend; a browser-provided cost is never trusted.
 
-**Changing grid size or alignment returns every character to their original starting settlement when published, without changing energy.** The editor explicitly confirms this reset. Terrain painting transfers by nearest old tile center and should be reviewed. Changing grid visibility does not reset anyone. A settlement serving as a character's origin cannot be removed or made impassable. Display names can change without changing the origin ID.
+**Changing grid size or alignment returns characters with a surviving origin to that settlement, without changing energy. Characters whose origin was deleted keep their map position.** The editor explicitly confirms grid changes. Terrain painting transfers by nearest old tile center and should be reviewed. Changing grid visibility does not reset anyone. Deleting a place never moves its characters. Display names and allegiance can change without changing a settlement ID.
 
 The initial grid is pointy-top. Radius can be adjusted from 28–80 map pixels; X/Y offsets can be adjusted from −80 to 80. Only walking is implemented; additional transportation modes are future work.
 
 ## Automatic publishing
 
-The recommended release workflow is now [GitHub Actions with keyless Google authorization](GITHUB_DEPLOYMENT.md). Google setup is a one-time browser task; later pushes to `main` can test and deploy automatically. Deployment is initially disabled in `.github/deployment.json` until that authorization is complete.
+The recommended release workflow is now [GitHub Actions with keyless Google authorization](GITHUB_DEPLOYMENT.md). Google setup is a one-time browser task; later pushes to `main` can test and deploy automatically. Google authorization is configured and deployment is enabled in `.github/deployment.json`. The live app is https://mergingsunapp-2.web.app.
 
 ## Connect the shared Firebase world
 
@@ -141,4 +151,4 @@ This normalizes the artwork to the existing 2400×1800 map coordinate system, cr
 
 ## Current boundaries
 
-The app is a first playable version, not a live deployment. It has no boats or horses, inventory, combat, multiplayer presence, secret lore, player-visible public character directory, image-upload service, or continuously running simulation. Character profile edits and admin energy adjustments are not included yet. Geometry changes reset positions only; they do not refund travel or replenish energy. Server backups are retained in `worldBackups`; the admin restore UI for those backups is a future improvement. Local draft autosave can be limited by browser storage capacity; export important work.
+The app is a first playable version deployed through GitHub Actions. It has no boats or horses, inventory, combat, multiplayer presence, secret lore, player-visible public character directory, image-upload service, or continuously running simulation. Character profile edits and admin energy adjustments are not included yet. Geometry changes reset positions only; they do not refund travel or replenish energy. Server backups are retained in `worldBackups`; the admin restore UI for those backups is a future improvement. Local draft autosave can be limited by browser storage capacity; export important work.

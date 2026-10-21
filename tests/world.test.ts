@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_WORLD,
+  normalizeWorld,
+  removeKingdom,
+  characterAfterWorldChange,
   center,
   hexAt,
   key,
@@ -101,5 +104,104 @@ describe("Energy and origins", () => {
     expect(() => spendEnergy(c, 101, now)).toThrow();
     expect(() => spendEnergy(c, -1, now)).toThrow();
     expect(() => spendEnergy(c, NaN, now)).toThrow();
+  });
+});
+
+describe("Kingdom hierarchy and character preservation", () => {
+  it("migrates legacy content using explicit names, never border containment", () => {
+    const legacy = structuredClone(DEFAULT_WORLD) as any;
+    delete legacy.schemaVersion;
+    for (const l of legacy.locations) {
+      delete l.kingdomId;
+      delete l.entries;
+    }
+    legacy.locations[0].region = "The Sunward Reach";
+    legacy.locations[0].x = 2000; // Outside the Reach's border is still an explicit allegiance.
+    legacy.locations[1].region = "Unknown legacy region";
+    const upgraded = normalizeWorld(legacy);
+    expect(upgraded.locations[0].kingdomId).toBe("reach");
+    expect(upgraded.locations[1].kingdomId).toBeNull();
+    expect(upgraded.locations[1].lore).toBe(legacy.locations[1].lore);
+    expect(normalizeWorld(upgraded)).toEqual(upgraded);
+  });
+  it("keeps a transferred settlement and its entries when its former kingdom is deleted", () => {
+    const w = structuredClone(DEFAULT_WORLD);
+    const city = w.locations.find((l) => l.id === "emberfall")!;
+    city.kingdomId = "coast";
+    const next = removeKingdom(normalizeWorld(w), "reach");
+    expect(next.locations.find((l) => l.id === city.id)?.entries[0].id).toBe(
+      "copper-stag",
+    );
+    expect(next.locations.find((l) => l.id === city.id)?.x).toBe(city.x);
+    expect(next.locations.some((l) => l.id === "thornwatch")).toBe(false);
+    expect(next.territories.some((k) => k.id === "reach")).toBe(false);
+  });
+  it("clears deleted place references without moving or charging a character", () => {
+    const c = {
+      ...makeCharacter(
+        "Rowan",
+        "",
+        "",
+        DEFAULT_WORLD.locations[0],
+        DEFAULT_WORLD,
+      ),
+      x: 735,
+      y: 760,
+      energy: 53,
+      currentLocationId: "emberfall",
+      internalLocationId: "copper-stag",
+    };
+    const next = characterAfterWorldChange(
+      c,
+      removeKingdom(DEFAULT_WORLD, "reach"),
+      false,
+    );
+    expect(next).toEqual({
+      ...c,
+      originLocationId: null,
+      currentLocationId: null,
+      internalLocationId: null,
+    });
+  });
+  it("preserves map position after an origin is deleted, including later grid changes", () => {
+    const c = makeCharacter(
+      "Rowan",
+      "",
+      "",
+      DEFAULT_WORLD.locations[0],
+      DEFAULT_WORLD,
+    );
+    const deleted = characterAfterWorldChange(
+      c,
+      removeKingdom(DEFAULT_WORLD, "reach"),
+      false,
+    );
+    const next = characterAfterWorldChange(
+      deleted,
+      { ...DEFAULT_WORLD, radius: 60, offsetX: 13 },
+      true,
+    );
+    expect(next).toEqual(deleted);
+  });
+  it("still returns characters with surviving origins when the grid changes", () => {
+    const c = {
+      ...makeCharacter(
+        "Rowan",
+        "",
+        "",
+        DEFAULT_WORLD.locations[0],
+        DEFAULT_WORLD,
+      ),
+      x: 600,
+      y: 700,
+      energy: 37,
+    };
+    const world = { ...DEFAULT_WORLD, radius: 48 };
+    const next = characterAfterWorldChange(c, world, true);
+    expect(next).toMatchObject({
+      ...center(hexAt(world.locations[0], world), world),
+      energy: 37,
+      originLocationId: "emberfall",
+    });
   });
 });

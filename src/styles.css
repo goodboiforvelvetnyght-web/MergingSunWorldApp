@@ -2454,3 +2454,118 @@ input[type="range"] {
   color: #929c82;
   margin-top: 9px;
 }
+
+/* Kingdom-first place editing */
+.editor-categories {
+  margin: 18px 0 22px;
+}
+.places-editor h2,
+.kingdom-editor h2 {
+  font-family: var(--font-display, "Libre Caslon Display", serif);
+  font-size: 28px;
+  margin: 18px 0 12px;
+}
+.place-breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  margin-bottom: 18px;
+}
+.place-breadcrumbs .text-button {
+  font-size: 12px;
+  padding: 3px 0;
+  text-align: left;
+}
+.hierarchy-list {
+  display: grid;
+  gap: 9px;
+  margin: 14px 0 20px;
+}
+.kingdom-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 15px 12px;
+  border: 1px solid #dfd8c8;
+  border-radius: 9px;
+  background: #fbf8f0;
+  color: #394b3e;
+  cursor: pointer;
+}
+.kingdom-card:hover,
+.kingdom-card:focus-visible {
+  background: #eee9dc;
+  border-color: #ad946d;
+}
+.kingdom-card > span:not(.kingdom-emblem) {
+  flex: 1;
+  min-width: 0;
+}
+.kingdom-card strong,
+.kingdom-card small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.kingdom-card strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+.kingdom-card small {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #747b6b;
+}
+.kingdom-card > svg {
+  flex-shrink: 0;
+}
+.kingdom-emblem {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #f1ecde;
+  flex-shrink: 0;
+}
+.place-management-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 22px;
+}
+.place-management-actions .button {
+  font-size: 12px;
+}
+.kingdom-lore {
+  margin: 12px 0;
+  max-height: 200px;
+  overflow: auto;
+}
+.kingdom-editor details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  padding: 10px 0;
+}
+.border-coordinates[open] {
+  max-height: 280px;
+  overflow: auto;
+}
+.border-coordinates .form-row {
+  margin-bottom: 8px;
+}
+.internal-entries {
+  display: grid;
+  gap: 10px;
+  margin: 24px 0;
+}
+.internal-entries h3 {
+  font-size: 16px;
+}
+
+.filter-tabs {
+  flex-wrap: wrap;
+}

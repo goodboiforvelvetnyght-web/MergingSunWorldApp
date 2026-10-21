@@ -12,10 +12,18 @@ export type Terrain = "plains" | "forest" | "mountain" | "water";
 export type Point = { x: number; y: number };
 export type Hex = { q: number; r: number };
 export type Tile = { terrain: Terrain; river: boolean };
+export type PlaceEntry = {
+  id: string;
+  name: string;
+  summary: string;
+  lore: string;
+};
 export type Location = {
   id: string;
   name: string;
-  kind: "city" | "town" | "landmark";
+  kind: "city" | "town" | "village" | "landmark";
+  kingdomId: string | null;
+  entries: PlaceEntry[];
   x: number;
   y: number;
   region: string;
@@ -23,23 +31,27 @@ export type Location = {
   lore: string;
   starting: boolean;
 };
-export type Territory = {
+export type Kingdom = {
   id: string;
   name: string;
   color: string;
+  lore: string;
   points: Point[];
 };
 export type World = {
+  schemaVersion: 2;
   version: number;
   radius: number;
   offsetX: number;
   offsetY: number;
   tiles: Record<string, Tile>;
   locations: Location[];
-  territories: Territory[];
+  territories: Kingdom[];
 };
 export type Character = {
-  originLocationId: string;
+  originLocationId: string | null;
+  currentLocationId?: string | null;
+  internalLocationId?: string | null;
   name: string;
   title: string;
   bio: string;
@@ -286,6 +298,7 @@ export function spendEnergy(
   };
 }
 export const DEFAULT_WORLD: World = {
+  schemaVersion: 2,
   version: 0,
   radius: 42,
   offsetX: 0,
@@ -294,6 +307,15 @@ export const DEFAULT_WORLD: World = {
   locations: [
     {
       id: "emberfall",
+      kingdomId: "reach",
+      entries: [
+        {
+          id: "copper-stag",
+          name: "The Copper Stag",
+          summary: "A welcoming inn for the road-weary.",
+          lore: "<p>A fire burns in the hearth, and there is always room for another story.</p>",
+        },
+      ],
       name: "Emberfall",
       kind: "city",
       x: 1090,
@@ -305,6 +327,8 @@ export const DEFAULT_WORLD: World = {
     },
     {
       id: "thornwatch",
+      kingdomId: "reach",
+      entries: [],
       name: "Thornwatch",
       kind: "town",
       x: 735,
@@ -316,6 +340,8 @@ export const DEFAULT_WORLD: World = {
     },
     {
       id: "highmere",
+      kingdomId: "reach",
+      entries: [],
       name: "Highmere",
       kind: "town",
       x: 1110,
@@ -327,6 +353,8 @@ export const DEFAULT_WORLD: World = {
     },
     {
       id: "sunspire",
+      kingdomId: "coast",
+      entries: [],
       name: "Sunspire",
       kind: "city",
       x: 1750,
@@ -338,6 +366,8 @@ export const DEFAULT_WORLD: World = {
     },
     {
       id: "mossveil",
+      kingdomId: "reach",
+      entries: [],
       name: "Mossveil",
       kind: "town",
       x: 870,
@@ -349,6 +379,8 @@ export const DEFAULT_WORLD: World = {
     },
     {
       id: "hollow",
+      kingdomId: "coast",
+      entries: [],
       name: "The Hollow Sanctum",
       kind: "landmark",
       x: 1600,
@@ -361,9 +393,22 @@ export const DEFAULT_WORLD: World = {
   ],
   territories: [
     {
+      id: "coast",
+      name: "The Golden Coast",
+      color: "#588b96",
+      lore: "<p>A coastal kingdom of white towers and sea roads.</p>",
+      points: [
+        { x: 1550, y: 650 },
+        { x: 2050, y: 650 },
+        { x: 2100, y: 1250 },
+        { x: 1600, y: 1350 },
+      ],
+    },
+    {
       id: "reach",
       name: "The Sunward Reach",
       color: "#b58d4f",
+      lore: "<p>A realm of old roads and welcoming hearths.</p>",
       points: [
         { x: 840, y: 650 },
         { x: 1320, y: 650 },
@@ -406,4 +451,60 @@ export function locationLabel(p: Point, w: World) {
   return n && hexDistance(hexAt(n, w), hexAt(p, w)) <= 1
     ? n.name
     : `${tileAt(hexAt(p, w), w).terrain} · ${key(hexAt(p, w))}`;
+}
+
+/** Upgrade legacy worlds without guessing allegiance from geometry or dropping lore. */
+export function normalizeWorld(input: World): World {
+  const territories = (input.territories ?? []).map((k) => ({
+    ...k,
+    lore: k.lore ?? "",
+  }));
+  return {
+    ...input,
+    schemaVersion: 2,
+    territories,
+    locations: input.locations.map((l) => {
+      const kingdomId =
+        l.kingdomId === undefined
+          ? (territories.find((k) => k.name === l.region)?.id ?? null)
+          : l.kingdomId;
+      return {
+        ...l,
+        kingdomId,
+        entries: l.entries ?? [],
+        region: territories.find((k) => k.id === kingdomId)?.name ?? l.region,
+      };
+    }),
+  };
+}
+export function removeKingdom(world: World, id: string): World {
+  return {
+    ...world,
+    territories: world.territories.filter((k) => k.id !== id),
+    locations: world.locations.filter((l) => l.kingdomId !== id),
+  };
+}
+/** Deletions clear references, but never move a character or change their energy. */
+export function characterAfterWorldChange(
+  c: Character,
+  world: World,
+  geometryChanged: boolean,
+): Character {
+  const origin = world.locations.find((l) => l.id === c.originLocationId);
+  const result: Character = { ...c, originLocationId: origin?.id ?? null };
+  if (
+    c.currentLocationId &&
+    !world.locations.some((l) => l.id === c.currentLocationId)
+  )
+    result.currentLocationId = null;
+  if (
+    c.internalLocationId &&
+    !world.locations.some((l) =>
+      l.entries.some((e) => e.id === c.internalLocationId),
+    )
+  )
+    result.internalLocationId = null;
+  if (geometryChanged && origin)
+    Object.assign(result, center(hexAt(origin, world), world));
+  return result;
 }

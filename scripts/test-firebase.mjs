@@ -22,6 +22,7 @@ import { getFirestore } from "../functions/node_modules/firebase-admin/lib/fires
 import { getAuth as adminAuth } from "../functions/node_modules/firebase-admin/lib/auth/index.js";
 import {
   DEFAULT_WORLD,
+  removeKingdom,
   hexAt,
   center,
   findRoute,
@@ -201,18 +202,143 @@ try {
       assert((await db.doc("worldBackups/0").get()).exists);
     },
   );
-  await check("publishing refuses deletion of a character origin", async () => {
-    const current = (await db.doc("worlds/main").get()).data();
-    await assert.rejects(
-      admin.call("publishWorld", {
+  await check(
+    "publishing rejects dangling parents, duplicate IDs, and missing borders",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const broken = [
+        {
+          ...current,
+          locations: current.locations.map((l, i) =>
+            i === 0 ? { ...l, kingdomId: "missing" } : l,
+          ),
+        },
+        {
+          ...current,
+          territories: [...current.territories, current.territories[0]],
+        },
+        {
+          ...current,
+          territories: current.territories.map((k, i) =>
+            i === 0 ? { ...k, points: [] } : k,
+          ),
+        },
+        {
+          ...current,
+          locations: current.locations.map((l, i) =>
+            i === 0 ? { ...l, entries: [...l.entries, l.entries[0]] } : l,
+          ),
+        },
+        {
+          ...current,
+          locations: [
+            ...current.locations,
+            {
+              ...current.locations[0],
+              id: "independent-new",
+              kingdomId: null,
+              entries: [],
+            },
+          ],
+        },
+      ];
+      for (const world of broken)
+        await assert.rejects(
+          admin.call("publishWorld", { world }),
+          (e) => e.code === "functions/invalid-argument",
+        );
+      assert.equal(
+        (await db.doc("worlds/main").get()).data().version,
+        current.version,
+      );
+    },
+  );
+  await check(
+    "allegiance transfers preserve entries and do not enforce border containment",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const city = current.locations.find((l) => l.id === "emberfall");
+      const before = (await db.doc(`characters/${p.user.uid}`).get()).data();
+      const world = await admin.call("publishWorld", {
+        world: {
+          ...current,
+          locations: current.locations.map((l) =>
+            l.id === city.id ? { ...l, kingdomId: "coast" } : l,
+          ),
+        },
+      });
+      const transferred = world.locations.find((l) => l.id === city.id);
+      assert.equal(transferred.kingdomId, "coast");
+      assert.equal(transferred.region, "The Golden Coast");
+      assert.deepEqual(transferred.entries, city.entries);
+      assert.equal(transferred.x, city.x);
+      assert.deepEqual(
+        (await db.doc(`characters/${p.user.uid}`).get()).data(),
+        before,
+      );
+    },
+  );
+  await check(
+    "kingdom deletion preserves settlements previously transferred away",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const world = await admin.call("publishWorld", {
+        world: removeKingdom(current, "reach"),
+      });
+      assert(world.locations.some((l) => l.id === "emberfall"));
+      assert(!world.locations.some((l) => l.id === "thornwatch"));
+      assert(!world.territories.some((k) => k.id === "reach"));
+    },
+  );
+  await check(
+    "deleting a settlement clears origin and internal references without moving characters",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const ref = db.doc(`characters/${p.user.uid}`);
+      await ref.update({
+        currentLocationId: "emberfall",
+        internalLocationId: "copper-stag",
+      });
+      const before = (await ref.get()).data();
+      const world = await admin.call("publishWorld", {
         world: {
           ...current,
           locations: current.locations.filter((l) => l.id !== "emberfall"),
         },
-      }),
-      (e) => e.code === "functions/failed-precondition",
-    );
-  });
+      });
+      const after = (await ref.get()).data();
+      assert.deepEqual(after, {
+        ...before,
+        originLocationId: null,
+        currentLocationId: null,
+        internalLocationId: null,
+      });
+      assert(
+        !world.locations.some((l) =>
+          l.entries.some((e) => e.id === "copper-stag"),
+        ),
+      );
+    },
+  );
+  await check(
+    "deleting the final kingdom is allowed and later grid changes preserve orphaned character positions",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const before = (await db.doc(`characters/${p.user.uid}`).get()).data();
+      const empty = await admin.call("publishWorld", {
+        world: removeKingdom(current, "coast"),
+      });
+      assert.equal(empty.locations.length, 0);
+      assert.equal(empty.territories.length, 0);
+      await admin.call("publishWorld", {
+        world: { ...empty, radius: 50, offsetX: 5 },
+      });
+      assert.deepEqual(
+        (await db.doc(`characters/${p.user.uid}`).get()).data(),
+        before,
+      );
+    },
+  );
   await check("old-version world publishing is rejected", async () => {
     await assert.rejects(
       admin.call("publishWorld", { world: DEFAULT_WORLD }),

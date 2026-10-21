@@ -4,6 +4,8 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
   DEFAULT_WORLD,
+  normalizeWorld,
+  characterAfterWorldChange,
   makeCharacter,
   findRoute,
   hexAt,
@@ -66,7 +68,7 @@ export const createCharacter = onCall(async (request) => {
     const [existing, ws] = await Promise.all([tx.get(ref), tx.get(worldRef)]);
     if (existing.exists)
       throw new HttpsError("already-exists", "You already have a character.");
-    const w = (ws.data() ?? DEFAULT_WORLD) as World;
+    const w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
     const location = w.locations.find((l) => l.id === locationId && l.starting);
     if (!location || !Number.isFinite(entryCost(tileAt(hexAt(location, w), w))))
       throw new HttpsError(
@@ -102,7 +104,7 @@ export const travel = onCall(async (request) => {
     if (js.exists)
       return { character: cs.data(), journey: { id: js.id, ...js.data() } };
     const c = cs.data() as Character,
-      w = (ws.data() ?? DEFAULT_WORLD) as World;
+      w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
     if (w.version !== worldVersion)
       throw new HttpsError(
         "failed-precondition",
@@ -125,7 +127,13 @@ export const travel = onCall(async (request) => {
       );
     }
     const position = center(hexAt(destination, w), w);
-    const character = { ...c, ...position, ...energy };
+    const character = {
+      ...c,
+      ...position,
+      ...energy,
+      currentLocationId: null,
+      internalLocationId: null,
+    };
     const journey = {
       from: locationLabel(c, w),
       to: locationLabel(position, w),
@@ -142,6 +150,7 @@ function validateWorld(input: unknown): World {
     throw new HttpsError("invalid-argument", "Invalid world.");
   const w = input as World;
   if (
+    w.schemaVersion !== 2 ||
     !Number.isInteger(w.version) ||
     w.version < 0 ||
     !Number.isInteger(w.radius) ||
@@ -173,35 +182,13 @@ function validateWorld(input: unknown): World {
     tiles[k] = { terrain: t.terrain, river: t.river };
   }
   const seen = new Set<string>();
-  const locations = w.locations.map((l) => {
-    if (
-      !l ||
-      !point(l) ||
-      !["town", "city", "landmark"].includes(l.kind) ||
-      typeof l.starting !== "boolean"
-    )
-      throw new HttpsError("invalid-argument", "Invalid location.");
-    const id = textField(l.id, "location ID", 80);
+  const uniqueId = (value: unknown, label: string) => {
+    const id = textField(value, label, 80);
     if (!/^[a-zA-Z0-9_-]+$/.test(id) || seen.has(id))
-      throw new HttpsError("invalid-argument", "Location IDs must be unique.");
+      throw new HttpsError("invalid-argument", "Place IDs must be unique.");
     seen.add(id);
-    return {
-      id,
-      name: textField(l.name, "location name", 80),
-      kind: l.kind,
-      x: l.x,
-      y: l.y,
-      region: textField(l.region, "region", 80, false),
-      summary: textField(l.summary, "summary", 240, false),
-      lore: textField(l.lore, "lore", 60000, false),
-      starting: l.starting,
-    };
-  });
-  if (!locations.some((l) => l.starting))
-    throw new HttpsError(
-      "invalid-argument",
-      "Keep at least one starting settlement.",
-    );
+    return id;
+  };
   const territories = w.territories.map((t) => {
     if (
       !t ||
@@ -211,15 +198,65 @@ function validateWorld(input: unknown): World {
       t.points.length > 150 ||
       !t.points.every(point)
     )
-      throw new HttpsError("invalid-argument", "Invalid territory.");
+      throw new HttpsError(
+        "invalid-argument",
+        "Each kingdom needs a border with 3 to 150 points.",
+      );
     return {
-      id: textField(t.id, "territory ID", 80),
-      name: textField(t.name, "territory name", 80),
+      id: uniqueId(t.id, "kingdom ID"),
+      name: textField(t.name, "kingdom name", 80),
       color: t.color,
+      lore: textField(t.lore, "kingdom lore", 60000, false),
       points: t.points.map((p) => ({ x: p.x, y: p.y })),
     };
   });
-  const clean = {
+  const locations = w.locations.map((l) => {
+    if (
+      !l ||
+      !point(l) ||
+      !["town", "city", "village", "landmark"].includes(l.kind) ||
+      typeof l.starting !== "boolean"
+    )
+      throw new HttpsError("invalid-argument", "Invalid location.");
+    const id = uniqueId(l.id, "settlement ID");
+    if (l.kingdomId !== null && !territories.some((k) => k.id === l.kingdomId))
+      throw new HttpsError(
+        "invalid-argument",
+        "Choose an existing kingdom for every settlement.",
+      );
+    if (!Array.isArray(l.entries) || l.entries.length > 100)
+      throw new HttpsError(
+        "invalid-argument",
+        "A settlement can have up to 100 internal locations.",
+      );
+    const entries = l.entries.map((e) => {
+      if (!e || typeof e !== "object")
+        throw new HttpsError("invalid-argument", "Invalid internal location.");
+      return {
+        id: uniqueId(e.id, "internal location ID"),
+        name: textField(e.name, "internal location name", 80),
+        summary: textField(e.summary, "summary", 240, false),
+        lore: textField(e.lore, "lore", 60000, false),
+      };
+    });
+    return {
+      id,
+      name: textField(l.name, "location name", 80),
+      kind: l.kind,
+      kingdomId: l.kingdomId,
+      entries,
+      x: l.x,
+      y: l.y,
+      region:
+        territories.find((k) => k.id === l.kingdomId)?.name ??
+        textField(l.region, "region", 80, false),
+      summary: textField(l.summary, "summary", 240, false),
+      lore: textField(l.lore, "lore", 60000, false),
+      starting: l.starting,
+    };
+  });
+  const clean: World = {
+    schemaVersion: 2,
     version: w.version,
     radius: w.radius,
     offsetX: w.offsetX,
@@ -250,7 +287,7 @@ export const publishWorld = onCall(async (request) => {
   const world = validateWorld(request.data?.world);
   return db.runTransaction(async (tx) => {
     const current = await tx.get(worldRef),
-      previous = (current.data() ?? DEFAULT_WORLD) as World;
+      previous = normalizeWorld((current.data() ?? DEFAULT_WORLD) as World);
     if (previous.version !== world.version)
       throw new HttpsError(
         "failed-precondition",
@@ -267,26 +304,29 @@ export const publishWorld = onCall(async (request) => {
       world.offsetX !== previous.offsetX ||
       world.offsetY !== previous.offsetY;
     const next = { ...world, version: previous.version + 1 };
+    // A legacy unassigned place can be kept or assigned, but new independent places are deferred.
+    for (const l of world.locations) {
+      if (
+        l.kingdomId === null &&
+        !previous.locations.some(
+          (old) => old.id === l.id && old.kingdomId === null,
+        )
+      )
+        throw new HttpsError(
+          "invalid-argument",
+          "New settlements must belong to a kingdom.",
+        );
+    }
     for (const doc of characters.docs) {
       const c = doc.data() as Character;
-      const origin = world.locations.find((l) => l.id === c.originLocationId);
-      if (!origin)
+      const updated = characterAfterWorldChange(c, world, geometryChanged);
+      if (!Number.isFinite(entryCost(tileAt(hexAt(updated, world), world))))
         throw new HttpsError(
           "failed-precondition",
-          "A character’s original starting settlement cannot be deleted.",
+          "An occupied tile or grid-reset destination cannot become impassable.",
         );
-      if (!Number.isFinite(entryCost(tileAt(hexAt(origin, world), world))))
-        throw new HttpsError(
-          "failed-precondition",
-          "Character origins must remain walkable.",
-        );
-      if (geometryChanged)
-        tx.update(doc.ref, center(hexAt(origin, world), world));
-      else if (!Number.isFinite(entryCost(tileAt(hexAt(c, world), world))))
-        throw new HttpsError(
-          "failed-precondition",
-          "An occupied tile cannot become impassable.",
-        );
+      if (JSON.stringify(updated) !== JSON.stringify(c))
+        tx.set(doc.ref, updated);
     }
     tx.set(db.doc(`worldBackups/${previous.version}`), previous);
     tx.set(worldRef, next);
