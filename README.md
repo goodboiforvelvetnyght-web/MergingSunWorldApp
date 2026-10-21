@@ -1,0 +1,144 @@
+# Merging Sun — first playable atlas
+
+A map-centered companion for a medieval fantasy LARP. Built with React, TypeScript, Leaflet, Firebase, and Tiptap.
+
+## Start locally
+
+Use Node.js 22.18 or newer (the Firebase deployment runtime is Node 22).
+
+```bash
+npm ci
+npm --prefix functions ci
+npm run dev
+```
+
+The app opens in **local preview** by default. A demo traveler starts in Emberfall with 100 energy. Map edits, character creation, and travel in this mode persist in this browser's local storage. They do **not** affect Firebase or transfer when you sign in.
+
+The placeholder map and all its tiles are checked in. Fonts are served locally. No external map service or API key is required for the map.
+
+In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm installs. Each cloud task already has an isolated checkout; use `/workspace/MergingSunWorldApp`, without creating a worktree unless explicitly requested.
+
+## Included in v0.1
+
+- Pan, wheel and pinch zoom, map tiles, zoom controls, fit world, and find character.
+- Searchable cities, towns, and landmarks. Filter by type, open lore, and share a location URL.
+- Hex-grid, terrain, territory, and place-label overlays.
+- One character per account, with name, title, biography, and original starting settlement.
+- Walking route previews with an energy breakdown, immediate travel, and recent journey history.
+- Terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
+- Location placement, position editing, rich-text lore, headings, lists, quotes, HTTPS images, and links. Lore is sanitized before display.
+- Territory polygon drawing, naming, recoloring, and deletion. Reshape a boundary by drawing its replacement.
+- Locally autosaved world and lore drafts; explicit world publication; world JSON export. The local preview can restore its previous saved world into a draft. Connected world publication keeps server-side version backups.
+- Firebase email/password sign-up, sign-in, password reset, and server-assigned admin roles.
+- Responsive desktop and phone layouts, keyboard-accessible controls, and a `/` shortcut for search.
+
+## Rules used for the prototype
+
+These are starter balancing values, defined in `shared/world.ts`:
+
+| Rule                   | Value                    |
+| ---------------------- | ------------------------ |
+| Maximum energy         | 100                      |
+| Regeneration           | 1 energy every 5 minutes |
+| Walking into plains    | 2 energy                 |
+| Walking into forest    | 4 energy                 |
+| Walking into mountains | 7 energy                 |
+| River modifier         | +3 energy on every entry |
+| Water                  | Impassable on foot       |
+| Approximate distance   | 5 km per hex step        |
+
+Routes minimize energy expenditure. The starting tile is free. Rivers are tile modifiers, with no directional crossing or spline mechanics. A route's distance counts its steps, including detours. Regeneration is calculated from timestamps on demand, without recurring server jobs. Travel costs and positions are calculated independently on the backend; a browser-provided cost is never trusted.
+
+**Changing grid size or alignment returns every character to their original starting settlement when published, without changing energy.** The editor explicitly confirms this reset. Terrain painting transfers by nearest old tile center and should be reviewed. Changing grid visibility does not reset anyone. A settlement serving as a character's origin cannot be removed or made impassable. Display names can change without changing the origin ID.
+
+The initial grid is pointy-top. Radius can be adjusted from 28–80 map pixels; X/Y offsets can be adjusted from −80 to 80. Only walking is implemented; additional transportation modes are future work.
+
+## Automatic publishing
+
+The recommended release workflow is now [GitHub Actions with keyless Google authorization](GITHUB_DEPLOYMENT.md). Google setup is a one-time browser task; later pushes to `main` can test and deploy automatically. Deployment is initially disabled in `.github/deployment.json` until that authorization is complete.
+
+## Connect the shared Firebase world
+
+The browser configuration for `mergingsunapp-2` is in `src/firebase.ts`. It is public web configuration, not an admin credential. Analytics is intentionally not initialized. Email/password Authentication and a production-mode Firestore database have already been created by the project owner.
+
+**The connected backend and rules must be deployed before saved characters, travel, and shared editing work.** A successful sign-in alone does not mean the world backend is deployed. The UI keeps local preview changes separate and reports backend errors.
+
+For a beginner-friendly deployment walkthrough, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+From a machine authenticated to the Firebase project:
+
+```bash
+npx firebase login
+npm run deploy
+```
+
+Deployment changes the live project. Review the rules and backend before running that command. Cloud Functions deployment requires the Blaze billing plan. The backend now uses the dedicated `merging-sun-runtime` service account created by the Google setup script. Manual deployments also require this setup. The callable functions use `asia-southeast1`; align this with your database region where practical, and update `VITE_FUNCTIONS_REGION` and the backend region together if needed. Functions are capped at five instances per function; usage and billing should be monitored in the Firebase console.
+
+Add the eventual website hostname to **Authentication → Settings → Authorized domains** if it is not already included. The frontend build creates `dist/`, configured for Firebase Hosting with application route fallbacks. Deployment does not require Firebase Storage: the current map is hosted as static tiles, and lore images accept public HTTPS URLs. Uploading images is not included yet.
+
+### Initial admin
+
+1. Create the admin's regular account through the app.
+2. Copy that account's UID from Firebase Authentication.
+3. On a trusted machine with Application Default Credentials authorized for this project, run:
+
+```bash
+npm --prefix functions run set-admin -- FIREBASE_AUTH_UID
+```
+
+For local Google Cloud credentials, an authorized operator can use `gcloud auth application-default login` before the command. Do not put service-account JSON, passwords, or admin credentials into the repository or browser. The helper preserves any existing custom claims. Sign out and back in to pick up the new role.
+
+Players cannot write character energy, positions, worlds, or journeys directly to Firestore. `createCharacter`, `travel`, and `publishWorld` are authenticated callable functions. World publishing requires an `admin: true` custom claim. Other players' characters and travel histories are private. World content is public.
+
+Travel uses transactions and idempotency request IDs. World publication checks versions to prevent one admin overwriting another's work and backs up the previous version. For this first version, publication supports up to 400 characters in one transaction and up to 800 KB of world data. Larger populations need a batched migration/maintenance workflow; publication explicitly refuses to proceed beyond the limit.
+
+## Validate
+
+```bash
+npm test
+npm run build
+npm run build:backend
+npm run test:e2e
+npm run test:auth
+```
+
+Playwright uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` to your browser binary elsewhere. It starts or reuses Vite on port 5173. `npm run test:auth` runs four real browser authentication checks against the local Auth emulator, including registration, session persistence, sign-in, and password reset. It needs no Firestore emulator download.
+
+The browser suite covers map loading, lore deep links, character creation, energy-based travel, history persistence, editor changes, undo, grid-origin resets, and mobile controls.
+
+### Firebase emulator integration
+
+Java 21+ and the Firebase CLI are required. The CLI is included as a development dependency. Tests use **`demo-merging-sun`**, never your production project.
+
+```bash
+npm run build:backend
+npm run test:firebase
+```
+
+The initial Firestore emulator download requires `storage.googleapis.com`. The CLI validates the downloaded artifact; do not disable verification. In the cloud workspace use:
+
+```bash
+XDG_CONFIG_HOME=/workspace/.firebase-config \
+FIREBASE_EMULATORS_PATH=/workspace/.firebase-emulators \
+npm run test:firebase
+```
+
+The integration suite checks character ownership, denied direct writes, admin permissions, authoritative travel pricing, duplicate-request idempotency, insufficient energy, stale world versions, and origin resets. It must pass before declaring the connected backend verified.
+
+For interactive emulator development, run `npm run emulators`, then start a separate frontend process with `VITE_FIREBASE_EMULATORS=true npm run dev`. Use test email addresses and passwords. The flag switches Firebase clients to the isolated demo project and local emulator ports. Emulator state is disposable unless you explicitly export it.
+
+## Replace the placeholder artwork
+
+The current illustrated source is `public/map/world.svg`, generated by `scripts/generate-map.mjs` from `shared/geography.ts`. `npm run map:generate` rebuilds the sample SVG and its tile pyramid. It is deterministic and should only be run when regenerating that sample.
+
+To tile your own image, keep its aspect ratio at 4:3 and run:
+
+```bash
+node scripts/tile-map.mjs /absolute/path/to/your-map.png
+```
+
+This normalizes the artwork to the existing 2400×1800 map coordinate system, creates the four-level tile pyramid and an overview, and replaces the served map tiles. It does not move locations or change terrain rules. Back up your world before replacing artwork. The existing procedural sample terrain will still exist: clear/reset its rules and repaint them for your real world as a separate map-authoring step. Updating the image alone cannot infer accurate terrain.
+
+## Current boundaries
+
+The app is a first playable version, not a live deployment. It has no boats or horses, inventory, combat, multiplayer presence, secret lore, player-visible public character directory, image-upload service, or continuously running simulation. Character profile edits and admin energy adjustments are not included yet. Geometry changes reset positions only; they do not refund travel or replenish energy. Server backups are retained in `worldBackups`; the admin restore UI for those backups is a future improvement. Local draft autosave can be limited by browser storage capacity; export important work.

@@ -1,0 +1,158 @@
+name: Test and deploy Firebase
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep deployment runs in order; never interrupt a production deployment halfway through.
+concurrency:
+  group: firebase-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  FIREBASE_PROJECT: mergingsunapp-2
+
+jobs:
+  validate:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      deployment_enabled: ${{ steps.deployment-config.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Read deployment switch
+        id: deployment-config
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const c=JSON.parse(fs.readFileSync('.github/deployment.json','utf8')); if(typeof c.enabled!=='boolean') throw new Error('Deployment switch must be true or false'); console.log('enabled='+c.enabled)" >> "$GITHUB_OUTPUT"
+      - name: Check the Google setup script
+        run: |
+          bash -n scripts/setup-github-deploy.sh
+          python3 scripts/test-deploy-setup.py
+      - name: Install locked dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npm --prefix functions ci --no-audit --no-fund
+      - name: Build website and backend
+        run: |
+          npm run build
+          npm run build:backend
+      - name: Test routes and energy
+        run: npm test
+      - name: Test Firebase rules and transactions in emulators
+        run: npm run test:firebase
+      - name: Install test browser
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module -e "import { chromium } from '@playwright/test'; console.log('CHROMIUM_PATH=' + chromium.executablePath())" >> "$GITHUB_ENV"
+      - name: Test real sign-in flows in the Auth emulator
+        run: npm run test:auth
+      - name: Test the production website
+        shell: bash
+        run: |
+          npm run preview -- --port 4173 --strictPort > "$RUNNER_TEMP/merging-sun-preview.log" 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:4173/ > /dev/null; then break; fi
+            if ! kill -0 "$preview_pid" 2>/dev/null; then
+              cat "$RUNNER_TEMP/merging-sun-preview.log"
+              exit 1
+            fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:4173/ > /dev/null
+          E2E_BASE_URL=http://127.0.0.1:4173 npm run test:e2e
+      - name: Save browser failure traces
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: browser-failure-traces
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Save the tested website
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: tested-website
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  setup-status:
+    name: Google connection status
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.outputs.deployment_enabled != 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Explain the remaining setup
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          ## App tests passed; deployment is waiting for Google authorization
+          Complete the one-time setup in [GITHUB_DEPLOYMENT.md](https://github.com/goodboiforvelvetnyght-web/MergingSunWorldApp/blob/main/GITHUB_DEPLOYMENT.md).
+          No Google credential or service-account key is stored in this repository.
+          Deployment stays disabled until enabled is set to true in .github/deployment.json.
+          SUMMARY
+
+  deploy:
+    name: Publish to Firebase
+    needs: validate
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.validate.outputs.deployment_enabled == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://mergingsunapp-2.web.app
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+      - name: Install deployment tools
+        run: |
+          npm ci --no-audit --no-fund
+          npm --prefix functions ci --no-audit --no-fund
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: tested-website
+          path: dist/
+      - name: Authenticate with short-lived Google credentials
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: mergingsunapp-2
+          workload_identity_provider: projects/277886772831/locations/global/workloadIdentityPools/merging-sun-github/providers/github
+          service_account: github-deploy@mergingsunapp-2.iam.gserviceaccount.com
+      - name: Ensure the Hosting site exists
+        run: node scripts/ensure-hosting.mjs
+      - name: Deploy tested site, callable functions, and rules
+        run: npx firebase deploy --project "$FIREBASE_PROJECT" --only firestore:rules,firestore:indexes,functions,hosting --non-interactive
+      - name: Check deployed Hosting and callable endpoints
+        run: node scripts/check-deployment.mjs
+      - name: Record successful deployment
+        run: |
+          printf '## Deployed successfully\n\n[Open Merging Sun](https://mergingsunapp-2.web.app)\n\nCommit: `%s`\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"

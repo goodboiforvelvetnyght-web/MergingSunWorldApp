@@ -1,0 +1,15 @@
+node_modules/
+dist/
+functions/lib/
+.env
+.env.local
+.env.*.local
+*.log
+.firebase/
+playwright-report/
+test-results/
+.DS_Store
+*.tsbuildinfo
+
+# Short-lived Google Actions credentials must never be committed.
+gha-creds-*.json
