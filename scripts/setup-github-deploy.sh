@@ -35,7 +35,7 @@ gcloud services enable --project="$PROJECT" --quiet \
   run.googleapis.com artifactregistry.googleapis.com eventarc.googleapis.com \
   pubsub.googleapis.com logging.googleapis.com storage.googleapis.com \
   iam.googleapis.com iamcredentials.googleapis.com sts.googleapis.com \
-  cloudresourcemanager.googleapis.com compute.googleapis.com
+  cloudresourcemanager.googleapis.com compute.googleapis.com cloudbilling.googleapis.com
 
 # Discover existing resources explicitly; errors abort rather than being treated as absence.
 accounts=$(gcloud iam service-accounts list --project="$PROJECT" --format='value(email)')
