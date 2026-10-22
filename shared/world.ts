@@ -1,4 +1,10 @@
 import {
+  DEFAULT_TRAVEL_RULES,
+  type TravelRules,
+  type TerrainType,
+  type TerrainFeature,
+} from "./travelRules.js";
+import {
   WIDTH,
   HEIGHT,
   LAND,
@@ -8,11 +14,53 @@ import {
   RIVER,
 } from "./geography.js";
 export { WIDTH, HEIGHT };
-export type Terrain = "plains" | "forest" | "mountain" | "water";
+// Legacy names remain accepted when loading older maps. tileAt returns canonical tiles.
+export type Terrain = TerrainType | "forest" | "mountain" | "water";
 export type Point = { x: number; y: number };
 export type BorderPoint = Point & { sharp?: boolean };
 export type Hex = { q: number; r: number };
-export type Tile = { terrain: Terrain; river: boolean; road?: boolean };
+export type Tile = {
+  terrain: Terrain;
+  features?: Exclude<TerrainFeature, "river">[];
+  river: boolean;
+  road?: boolean;
+};
+export type NormalizedTile = Tile & {
+  terrain: TerrainType;
+  features: Exclude<TerrainFeature, "river">[];
+};
+export function normalizeTile(tile: Tile): NormalizedTile {
+  const features = new Set(tile.features ?? []);
+  if (tile.terrain === "forest" || tile.terrain === "mountain")
+    features.add(tile.terrain);
+  if (features.has("mountain")) features.delete("hills");
+  return {
+    terrain:
+      tile.terrain === "water"
+        ? "ocean"
+        : tile.terrain === "forest" || tile.terrain === "mountain"
+          ? "plains"
+          : tile.terrain,
+    features: [...features].sort(),
+    river: tile.river,
+    road: tile.road ?? false,
+  };
+}
+export function paintFeature(
+  tile: Tile,
+  feature: TerrainFeature,
+  add: boolean,
+): NormalizedTile {
+  const next = normalizeTile(tile);
+  if (feature === "river") return { ...next, river: add };
+  const features = new Set(next.features);
+  if (add) {
+    features.add(feature);
+    if (feature === "mountain") features.delete("hills");
+    if (feature === "hills") features.delete("mountain");
+  } else features.delete(feature);
+  return { ...next, features: [...features].sort() };
+}
 export type PlaceEntry = {
   id: string;
   name: string;
@@ -44,6 +92,7 @@ export type Kingdom = {
 };
 export type World = {
   schemaVersion: 2;
+  travelRules?: TravelRules;
   mapAssetId?: string | null;
   mapNativeZoom?: number;
   mapWidth?: number;
@@ -102,15 +151,13 @@ export type Journey = {
 export const MAX_ENERGY = 100;
 export const REGEN_MS = 5 * 60 * 1000;
 export const KM_PER_HEX = 5;
-export const COSTS: Record<Terrain, number> = {
-  plains: 2,
-  forest: 4,
-  mountain: 7,
-  water: Infinity,
-};
-export const RIVER_COST = 3;
 export const TERRAIN_COLORS: Record<Terrain, string> = {
   plains: "#c7c58c",
+  desert: "#d5af69",
+  tundra: "#a0a798",
+  snow: "#e8edef",
+  coast: "#68c4ce",
+  ocean: "#537baf",
   forest: "#58745c",
   mountain: "#9b8c7d",
   water: "#88aeb4",
@@ -201,16 +248,48 @@ export function baseTile(p: Point, radius: number): Tile {
       ),
   };
 }
-export const tileAt = (h: Hex, w: World): Tile =>
-  w.tiles[key(h)] ??
-  (w.terrainBase === "water"
-    ? { terrain: "water", river: false, road: false }
-    : baseTile(center(h, w), w.radius));
+export const tileAt = (h: Hex, w: World): NormalizedTile =>
+  normalizeTile(
+    w.tiles[key(h)] ??
+      (w.terrainBase === "water"
+        ? { terrain: "water", river: false, road: false }
+        : baseTile(center(h, w), w.radius)),
+  );
 export function worldSize(w: Pick<World, "mapWidth" | "mapHeight">) {
   return { width: w.mapWidth ?? WIDTH, height: w.mapHeight ?? HEIGHT };
 }
-export const entryCost = (t: Tile) =>
-  COSTS[t.terrain] * (t.road ? 0.5 : 1) + (t.river ? RIVER_COST : 0);
+export function tileTravelCost(tile: Tile, world?: Pick<World, "travelRules">) {
+  const t = normalizeTile(tile),
+    rules = world?.travelRules ?? DEFAULT_TRAVEL_RULES;
+  const rows = [
+    { id: t.terrain, rule: rules.terrain[t.terrain] },
+    ...[...t.features, ...(t.river ? ["river" as const] : [])].map((id) => ({
+      id,
+      rule: rules.features[id],
+    })),
+  ];
+  const blocked = rows.some(
+    ({ rule }) =>
+      rule.walking === "blocked" ||
+      (rule.walking === "road-required" && !t.road),
+  );
+  const passageOnly = rows.some(({ rule }) => rule.road === "passage-only");
+  const costs: Record<string, number> = {};
+  let savings = 0;
+  for (const { id, rule } of rows) {
+    const discount =
+      t.road && !passageOnly && rule.road === "discount" ? 0.5 : 1;
+    costs[id] = rule.cost * discount;
+    savings += rule.cost * (1 - discount);
+  }
+  return {
+    cost: blocked ? Infinity : Object.values(costs).reduce((a, b) => a + b, 0),
+    costs,
+    savings,
+  };
+}
+export const entryCost = (tile: Tile, world?: Pick<World, "travelRules">) =>
+  tileTravelCost(tile, world).cost;
 export function inBounds(h: Hex, w: World) {
   const p = center(h, w);
   const { width, height } = worldSize(w);
@@ -255,13 +334,14 @@ export type Route = {
   rawCost: number;
   roadSavings: number;
   rounding: number;
-  terrainCosts: Record<Terrain, number>;
+  terrainCosts: Partial<Record<Terrain, number>>;
+  featureCosts: Partial<Record<TerrainFeature, number>>;
 };
 export function findRoute(start: Hex, end: Hex, w: World): Route | null {
   if (
     !inBounds(start, w) ||
     !inBounds(end, w) ||
-    !Number.isFinite(entryCost(tileAt(end, w)))
+    !Number.isFinite(entryCost(tileAt(end, w), w))
   )
     return null;
   const startKey = key(start),
@@ -274,7 +354,7 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
     let current = start,
       best = Infinity;
     for (const [k, h] of open) {
-      const score = g.get(k)! + hexDistance(h, end);
+      const score = g.get(k)! + hexDistance(h, end) * 0.5;
       if (score < best) {
         best = score;
         current = h;
@@ -286,18 +366,18 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
       const path = [current];
       while (key(path[0]) !== startKey)
         path.unshift(previous.get(key(path[0]))!);
-      const terrainCosts: Record<Terrain, number> = {
-        plains: 0,
-        forest: 0,
-        mountain: 0,
-        water: 0,
-      };
+      const terrainCosts: Partial<Record<Terrain, number>> = {};
+      const featureCosts: Partial<Record<TerrainFeature, number>> = {};
       let riverEntries = 0,
         roadSavings = 0;
       for (const h of path.slice(1)) {
-        const t = tileAt(h, w);
-        terrainCosts[t.terrain] += COSTS[t.terrain] * (t.road ? 0.5 : 1);
-        if (t.road) roadSavings += COSTS[t.terrain] * 0.5;
+        const t = tileAt(h, w),
+          details = tileTravelCost(t, w);
+        terrainCosts[t.terrain] =
+          (terrainCosts[t.terrain] ?? 0) + details.costs[t.terrain];
+        for (const f of [...t.features, ...(t.river ? ["river" as const] : [])])
+          featureCosts[f] = (featureCosts[f] ?? 0) + details.costs[f];
+        roadSavings += details.savings;
         if (t.river) riverEntries++;
       }
       return {
@@ -309,11 +389,12 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
         steps: path.length - 1,
         riverEntries,
         terrainCosts,
+        featureCosts,
       };
     }
     for (const n of neighbors(current)) {
       if (!inBounds(n, w)) continue;
-      const cost = entryCost(tileAt(n, w));
+      const cost = entryCost(tileAt(n, w), w);
       if (!Number.isFinite(cost)) continue;
       const nk = key(n),
         next = g.get(ck)! + cost;
@@ -511,6 +592,10 @@ export function normalizeWorld(input: World): World {
   return {
     ...input,
     schemaVersion: 2,
+    travelRules: structuredClone(input.travelRules ?? DEFAULT_TRAVEL_RULES),
+    tiles: Object.fromEntries(
+      Object.entries(input.tiles).map(([k, t]) => [k, normalizeTile(t)]),
+    ),
     territories,
     locations: input.locations.map((l) => {
       const kingdomId =

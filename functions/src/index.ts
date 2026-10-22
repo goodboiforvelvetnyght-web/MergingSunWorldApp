@@ -1,3 +1,11 @@
+import {
+  DEFAULT_TRAVEL_RULES,
+  TRAVEL_MODEL_VERSION,
+  TERRAIN_TYPES,
+  FEATURE_TYPES,
+  travelRulesError,
+} from "../../shared/travelRules.js";
+import { normalizeTile } from "../../shared/world.js";
 export {
   beginMapUpload,
   uploadMapChunk,
@@ -209,7 +217,10 @@ export const createCharacter = onCall(async (request) => {
         l.kingdomId &&
         w.territories.some((k) => k.id === l.kingdomId),
     );
-    if (!location || !Number.isFinite(entryCost(tileAt(hexAt(location, w), w))))
+    if (
+      !location ||
+      !Number.isFinite(entryCost(tileAt(hexAt(location, w), w), w))
+    )
       throw new HttpsError(
         "failed-precondition",
         "Choose a walkable starting settlement belonging to a kingdom.",
@@ -238,6 +249,11 @@ export const createCharacter = onCall(async (request) => {
 export const travel = onCall(async (request) => {
   if (!request.auth)
     throw new HttpsError("unauthenticated", "Sign in to travel.");
+  if (request.data?.travelModel !== TRAVEL_MODEL_VERSION)
+    throw new HttpsError(
+      "failed-precondition",
+      "Travel rules have been updated. Refresh the app and preview your journey again.",
+    );
   const { destination, worldVersion, requestId, generation } =
     request.data ?? {};
   if (
@@ -353,6 +369,8 @@ function validateWorld(input: unknown): World {
     w.territories.length > 30
   )
     throw new HttpsError("invalid-argument", "World limits exceeded.");
+  const rulesError = travelRulesError(w.travelRules ?? DEFAULT_TRAVEL_RULES);
+  if (rulesError) throw new HttpsError("invalid-argument", rulesError);
   const bounds = worldSize(w);
   if (
     w.mapAlignment &&
@@ -365,12 +383,21 @@ function validateWorld(input: unknown): World {
     if (
       !/^-?\d{1,3},-?\d{1,3}$/.test(k) ||
       !t ||
-      !["plains", "forest", "mountain", "water"].includes(t.terrain) ||
+      ![...TERRAIN_TYPES, "forest", "mountain", "water"].includes(t.terrain) ||
       typeof t.river !== "boolean" ||
+      (t.features !== undefined &&
+        (!Array.isArray(t.features) ||
+          t.features.length > 4 ||
+          new Set(t.features).size !== t.features.length ||
+          t.features.some(
+            (f) => f === ("river" as string) || !FEATURE_TYPES.includes(f),
+          ) ||
+          (t.features.includes("hills") &&
+            (t.features.includes("mountain") || t.terrain === "mountain")))) ||
       (t.road !== undefined && typeof t.road !== "boolean")
     )
       throw new HttpsError("invalid-argument", "Invalid terrain tile.");
-    tiles[k] = { terrain: t.terrain, river: t.river, road: t.road ?? false };
+    tiles[k] = normalizeTile(t);
   }
   const seen = new Set<string>();
   const uniqueId = (value: unknown, label: string) => {
@@ -474,6 +501,7 @@ function validateWorld(input: unknown): World {
   });
   const clean: World = {
     schemaVersion: 2,
+    travelRules: structuredClone(w.travelRules ?? DEFAULT_TRAVEL_RULES),
     mapAssetId: w.mapAssetId ?? null,
     mapWidth: bounds.width,
     mapHeight: bounds.height,
@@ -498,7 +526,7 @@ function validateWorld(input: unknown): World {
   for (const l of locations.filter((l) => l.starting))
     if (
       !inBounds(hexAt(l, clean), clean) ||
-      !Number.isFinite(entryCost(tileAt(hexAt(l, clean), clean)))
+      !Number.isFinite(entryCost(tileAt(hexAt(l, clean), clean), clean))
     )
       throw new HttpsError(
         "invalid-argument",
@@ -592,7 +620,16 @@ export const publishWorld = onCall(async (request) => {
         world,
         geometryChanged,
       );
-      if (!Number.isFinite(entryCost(tileAt(hexAt(updated, world), world))))
+      if (
+        !Number.isFinite(
+          entryCost(tileAt(hexAt(updated, world), world), world),
+        ) &&
+        (geometryChanged ||
+          !!world.mapAlignment ||
+          Number.isFinite(
+            entryCost(tileAt(hexAt(c, previous), previous), previous),
+          ))
+      )
         throw new HttpsError(
           "failed-precondition",
           "An occupied tile or grid-reset destination cannot become impassable.",

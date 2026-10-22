@@ -186,7 +186,7 @@ export default function CharacterCreation({
   const validHome =
     !!home &&
     home.starting &&
-    Number.isFinite(entryCost(tileAt(hexAt(home, world), world)));
+    Number.isFinite(entryCost(tileAt(hexAt(home, world), world), world));
   const entry = home?.entries.find((e) => e.id === entryId);
   function update(patch: Partial<Draft>) {
     setDraft((d) => ({ ...d, ...patch }));
@@ -404,7 +404,10 @@ export default function CharacterCreation({
                           <small>
                             {city.starting &&
                             Number.isFinite(
-                              entryCost(tileAt(hexAt(city, world), world)),
+                              entryCost(
+                                tileAt(hexAt(city, world), world),
+                                world,
+                              ),
                             )
                               ? "Available birthplace"
                               : "Lore only"}

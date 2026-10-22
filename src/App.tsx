@@ -1,3 +1,13 @@
+import { WorldRulesEditor } from "./components/WorldRules";
+import {
+  DEFAULT_TRAVEL_RULES,
+  TRAVEL_MODEL_VERSION,
+  TERRAIN_TYPES,
+  FEATURE_TYPES,
+  travelRulesError,
+  type TerrainFeature,
+  type TerrainType,
+} from "../shared/travelRules";
 import {
   EditorRibbon,
   EditorHierarchy,
@@ -103,8 +113,8 @@ import {
   MAX_ENERGY,
   REGEN_MS,
   KM_PER_HEX,
-  COSTS,
-  RIVER_COST,
+  entryCost,
+  paintFeature,
   TERRAIN_COLORS,
   allHexes,
   hexAt,
@@ -124,7 +134,6 @@ import {
   type Location,
   type Journey,
   type Hex,
-  type Terrain,
   type Point,
   type BorderPoint,
 } from "../shared/world";
@@ -136,6 +145,11 @@ const icons = {
 };
 const terrainIcons = {
   plains: Sun,
+  desert: Sun,
+  tundra: Mountain,
+  snow: Mountain,
+  coast: Waves,
+  ocean: Waves,
   forest: Trees,
   mountain: Mountain,
   water: Waves,
@@ -185,14 +199,16 @@ export default function App() {
     [past, setPast] = useState<World[]>([]),
     [future, setFuture] = useState<World[]>([]),
     [tool, setTool] = useState<EditorTool>("pan"),
-    [paintTerrain, setPaintTerrain] = useState<Terrain>("plains"),
+    [paintTerrain, setPaintTerrain] = useState<TerrainType>("plains"),
+    [paintFeatureType, setPaintFeatureType] =
+      useState<TerrainFeature>("forest"),
     [brushSize, setBrushSize] = useState(1),
     [draftBorder, setDraftBorder] = useState<BorderPoint[]>([]),
     [kingdomEdit, setKingdomEdit] = useState<Kingdom | null>(null),
     [placementKingdom, setPlacementKingdom] = useState<string | null>(null),
-    [editorCategory, setEditorCategory] = useState<"landscape" | "places">(
-      "places",
-    ),
+    [editorCategory, setEditorCategory] = useState<
+      "landscape" | "places" | "rules"
+    >("places"),
     [viewKingdom, setViewKingdom] = useState<string | null>(null),
     [viewEntry, setViewEntry] = useState<PlaceEntry | null>(null);
   const [editLocation, setEditLocation] = useState<Location | null>(null),
@@ -407,19 +423,22 @@ export default function App() {
             : allHexes(current).filter((n) => hexDistance(n, h) < brushSize);
         for (const n of cells) {
           const t = tileAt(n, current);
-          tiles[key(n)] = {
-            ...t,
-            ...(tool === "terrain"
-              ? { terrain: paintTerrain }
-              : tool === "road" || tool === "erase-road"
-                ? { road: tool === "road" }
-                : { river: tool === "river" }),
-          };
+          tiles[key(n)] =
+            tool === "feature" || tool === "erase-feature"
+              ? paintFeature(t, paintFeatureType, tool === "feature")
+              : {
+                  ...t,
+                  ...(tool === "terrain"
+                    ? { terrain: paintTerrain }
+                    : tool === "road" || tool === "erase-road"
+                      ? { road: tool === "road" }
+                      : { river: tool === "river" }),
+                };
         }
         return { ...current, tiles };
       });
     },
-    [tool, paintTerrain, brushSize],
+    [tool, paintTerrain, paintFeatureType, brushSize],
   );
   function undo() {
     if (kingdomEdit) {
@@ -467,6 +486,13 @@ export default function App() {
   }
   async function publish(confirmed = false) {
     if (!draft) return;
+    const rulesError = travelRulesError(
+      draft.travelRules ?? DEFAULT_TRAVEL_RULES,
+    );
+    if (rulesError) {
+      setToast({ text: rulesError, error: true });
+      return;
+    }
     const geometryChanged = gridChangedAfterAlignment(published, draft);
     const alignedCharacter = (c: Character) =>
       draft.mapAlignment
@@ -485,7 +511,7 @@ export default function App() {
     setBusy(true);
     try {
       for (const l of draft.locations.filter((l) => l.starting))
-        if (tileAt(hexAt(l, draft), draft).terrain === "water")
+        if (!Number.isFinite(entryCost(tileAt(hexAt(l, draft), draft), draft)))
           throw new Error("Starting settlements must be walkable.");
       if (character) {
         const updated = characterAfterWorldChange(
@@ -493,7 +519,19 @@ export default function App() {
           draft,
           geometryChanged,
         );
-        if (tileAt(hexAt(updated, draft), draft).terrain === "water")
+        if (
+          !Number.isFinite(
+            entryCost(tileAt(hexAt(updated, draft), draft), draft),
+          ) &&
+          (geometryChanged ||
+            !!draft.mapAlignment ||
+            Number.isFinite(
+              entryCost(
+                tileAt(hexAt(character, published), published),
+                published,
+              ),
+            ))
+        )
           throw new Error(
             "Your traveler’s tile or grid-reset destination must remain walkable.",
           );
@@ -560,7 +598,12 @@ export default function App() {
         const l = published.locations.find(
           (l) => l.id === data.locationId && l.starting && l.kingdomId,
         );
-        if (!l || tileAt(hexAt(l, published), published).terrain === "water")
+        if (
+          !l ||
+          !Number.isFinite(
+            entryCost(tileAt(hexAt(l, published), published), published),
+          )
+        )
           throw new Error("Choose a walkable starting settlement.");
         if (
           demoCharacter &&
@@ -631,6 +674,7 @@ export default function App() {
         await call("travel", {
           destination: pos,
           worldVersion: published.version,
+          travelModel: TRAVEL_MODEL_VERSION,
           generation: characterGeneration(character),
           requestId: travelRequest.current.id,
         });
@@ -806,12 +850,13 @@ export default function App() {
     setTool("border-point");
     closeDetails();
   }
-  function chooseCategory(category: "places" | "landscape") {
+  function chooseCategory(category: "places" | "landscape" | "rules") {
     if (kingdomEdit && !window.confirm("Discard the unsaved kingdom form?"))
       return;
     cancelKingdomEdit();
     setEditLocation(null);
     setEditorCategory(category);
+    setTool("pan");
     closeDetails();
   }
   function inspectSelection(selection: EditorSelection) {
@@ -933,7 +978,9 @@ export default function App() {
       </Suspense>
     );
   return (
-    <div className={`app-shell ${editor ? "editor-workspace" : ""}`}>
+    <div
+      className={`app-shell ${editor ? `editor-workspace ${editorCategory === "rules" ? "rules-workspace" : ""}` : ""}`}
+    >
       <nav className="rail" aria-label="Main navigation">
         <a
           className="brand-mark"
@@ -1051,7 +1098,12 @@ export default function App() {
             onPublish={() => void publish()}
             publishLabel={isDemo ? "Save local world" : "Publish world"}
             publishDisabled={
-              busy || assetBusy || !dirty || !!kingdomEdit || !!editLocation
+              busy ||
+              assetBusy ||
+              !dirty ||
+              !!kingdomEdit ||
+              !!editLocation ||
+              !!travelRulesError(draft?.travelRules ?? DEFAULT_TRAVEL_RULES)
             }
             saving={busy}
             dirty={dirty || !!kingdomEdit}
@@ -1539,6 +1591,11 @@ export default function App() {
                     </p>
                   )}
                 </>
+              ) : editorCategory === "rules" ? (
+                <div className="info-note">
+                  Travel costs are edited in the table. Changes are part of your
+                  world draft.
+                </div>
               ) : (
                 <>
                   <PropertyPortal>
@@ -1584,14 +1641,7 @@ export default function App() {
                         <>
                           <label className="field-label">BASE TERRAIN</label>
                           <div className="terrain-options">
-                            {(
-                              [
-                                "plains",
-                                "forest",
-                                "mountain",
-                                "water",
-                              ] as Terrain[]
-                            ).map((t) => {
+                            {TERRAIN_TYPES.map((t) => {
                               const Icon = terrainIcons[t];
                               return (
                                 <button
@@ -1605,9 +1655,10 @@ export default function App() {
                                   />
                                   <span>{t}</span>
                                   <small>
-                                    {t === "water"
+                                    {(draft.travelRules ?? DEFAULT_TRAVEL_RULES)
+                                      .terrain[t].walking === "blocked"
                                       ? "Blocked"
-                                      : `${COSTS[t]} energy`}
+                                      : `${(draft.travelRules ?? DEFAULT_TRAVEL_RULES).terrain[t].cost} energy`}
                                   </small>
                                 </button>
                               );
@@ -1615,7 +1666,40 @@ export default function App() {
                           </div>
                         </>
                       )}
+                      {(tool === "feature" || tool === "erase-feature") && (
+                        <>
+                          <label className="field-label">TERRAIN FEATURE</label>
+                          <div className="terrain-options">
+                            {FEATURE_TYPES.map((f) => (
+                              <button
+                                key={f}
+                                className={
+                                  paintFeatureType === f ? "active" : ""
+                                }
+                                onClick={() => setPaintFeatureType(f)}
+                              >
+                                <span>{f}</span>
+                                <small>
+                                  +
+                                  {
+                                    (draft.travelRules ?? DEFAULT_TRAVEL_RULES)
+                                      .features[f].cost
+                                  }{" "}
+                                  energy
+                                </small>
+                              </button>
+                            ))}
+                          </div>
+                          <p className="info-note">
+                            Features stack. Adding hills removes mountains;
+                            adding mountains removes hills. Other features,
+                            roads, and base terrain stay in place.
+                          </p>
+                        </>
+                      )}
                       {[
+                        "feature",
+                        "erase-feature",
                         "terrain",
                         "river",
                         "erase-river",
@@ -1643,14 +1727,17 @@ export default function App() {
                             <Info size={17} />
                             <span>
                               {tool === "terrain"
-                                ? "Paint by clicking or dragging across hexes. Water blocks walking."
+                                ? "Replace only the base terrain. Features and roads stay in place. Coast and ocean block walking by default."
                                 : tool === "river"
-                                  ? "Add +3 energy whenever a traveler enters a river tile."
+                                  ? `Add a river feature: +${(draft.travelRules ?? DEFAULT_TRAVEL_RULES).features.river.cost} energy per entry under the draft rules.`
                                   : tool === "road"
-                                    ? "Roads halve terrain costs. River surcharges stay the same. Paint by clicking or dragging."
-                                    : tool === "erase-road"
-                                      ? "Remove roads without changing terrain or rivers."
-                                      : "Remove the river modifier without changing base terrain."}
+                                    ? "By default, roads halve land costs, leave rivers full price, and allow mountain travel without a discount."
+                                    : tool === "feature" ||
+                                        tool === "erase-feature"
+                                      ? `Click or drag to ${tool === "feature" ? "add" : "remove"} ${paintFeatureType}.`
+                                      : tool === "erase-road"
+                                        ? "Remove roads without changing terrain or rivers."
+                                        : "Remove the river modifier without changing base terrain."}
                             </span>
                           </div>
                         </>
@@ -1931,7 +2018,22 @@ export default function App() {
             )}
           </div>
         </header>
-        <section className="map-stage" aria-label="World atlas">
+        <section
+          className="map-stage"
+          aria-label={
+            editor && editorCategory === "rules"
+              ? "World rules workspace"
+              : "World atlas"
+          }
+        >
+          {editor && editorCategory === "rules" && draft && (
+            <WorldRulesEditor
+              rules={draft.travelRules ?? DEFAULT_TRAVEL_RULES}
+              onChange={(rules) =>
+                changeWorld({ ...draft, travelRules: rules })
+              }
+            />
+          )}
           <WorldMap
             world={world}
             population={isDemo ? undefined : cloud.population}
@@ -2171,7 +2273,7 @@ export default function App() {
                   </h2>
                   <p>
                     {location?.summary ||
-                      `Hex ${key(destination)} · ${tileAt(destination, world).river ? "River modifier · +3 entry energy" : "Follow your own path."}`}
+                      `Hex ${key(destination)} · ${[...tileAt(destination, world).features, ...(tileAt(destination, world).river ? ["river"] : []), ...(tileAt(destination, world).road ? ["road"] : [])].join(" · ") || "Follow your own path."}`}
                   </p>
                 </div>
                 {location && (
@@ -2277,8 +2379,8 @@ export default function App() {
                     <div className="info-note">
                       <Waves size={18} />
                       <span>
-                        No walking route reaches this tile. Water is impassable;
-                        choose another destination.
+                        No walking route reaches this tile under the current
+                        terrain and travel rules. Choose another destination.
                       </span>
                     </div>
                   ) : (
@@ -2314,17 +2416,17 @@ export default function App() {
                               <strong>{cost}</strong>
                             </div>
                           ))}
-                        {route.riverEntries > 0 && (
-                          <div>
-                            <span>
-                              {route.riverEntries} river entries × {RIVER_COST}
-                            </span>
-                            <strong>{route.riverEntries * RIVER_COST}</strong>
-                          </div>
-                        )}
+                        {Object.entries(route.featureCosts)
+                          .filter(([, cost]) => cost > 0)
+                          .map(([feature, cost]) => (
+                            <div key={feature}>
+                              <span>{feature} feature</span>
+                              <strong>{cost}</strong>
+                            </div>
+                          ))}
                         {route.roadSavings > 0 && (
                           <p>
-                            Terrain totals include a 50% road discount, saving{" "}
+                            Totals include eligible road discounts, saving{" "}
                             {route.roadSavings} energy.
                           </p>
                         )}
@@ -2335,8 +2437,8 @@ export default function App() {
                           </div>
                         )}
                         <p>
-                          The starting hex is free. Roads halve terrain cost.
-                          River surcharges are added in full; the final journey
+                          The starting hex is free. Terrain, features, and roads
+                          follow the published world rules; the final journey
                           total is rounded up.
                         </p>
                       </details>
@@ -2692,10 +2794,11 @@ export default function App() {
             </p>
             <h3>Travel rules</h3>
             <p>
-              Roads halve terrain costs. Walking normally costs 2 energy for
-              plains, 4 for forest, and 7 for mountains. A river modifier adds 3
-              on entry. Water blocks walking. Each hex step represents about 5
-              km.
+              Travel costs combine base terrain and features under the published
+              world rules. By default, coast and ocean block walking; mountains
+              require roads without a discount. Other roads halve eligible
+              costs, with river surcharges added in full. Each hex step
+              represents about 5 km.
             </p>
             <p>
               Energy regenerates by 1 every 5 minutes, to a maximum of 100.

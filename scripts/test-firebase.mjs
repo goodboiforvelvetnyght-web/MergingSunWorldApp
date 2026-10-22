@@ -1,3 +1,7 @@
+import {
+  DEFAULT_TRAVEL_RULES,
+  TRAVEL_MODEL_VERSION,
+} from "../functions/lib/shared/travelRules.js";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { initializeApp as clientApp } from "firebase/app";
@@ -50,7 +54,9 @@ function client(name) {
     call: (n, data) =>
       httpsCallable(functions, n, {
         timeout: n === "processMapUpload" ? 600000 : 70000,
-      })(data).then((r) => r.data),
+      })(
+        n === "travel" ? { travelModel: TRAVEL_MODEL_VERSION, ...data } : data,
+      ).then((r) => r.data),
   };
 }
 const player = client("player"),
@@ -750,8 +756,18 @@ try {
       for (const h of allHexes(current))
         tiles[key(h)] = { terrain: "water", river: false };
       tiles[key(start)] = { terrain: "plains", river: false };
-      tiles[key(one)] = { terrain: "mountain", river: false, road: true };
-      tiles[key(two)] = { terrain: "mountain", river: true, road: true };
+      tiles[key(one)] = {
+        terrain: "snow",
+        features: ["forest"],
+        river: false,
+        road: true,
+      };
+      tiles[key(two)] = {
+        terrain: "snow",
+        features: ["forest"],
+        river: true,
+        road: true,
+      };
       const world = await admin.call("publishWorld", {
         world: {
           ...current,
@@ -771,6 +787,111 @@ try {
       });
       assert.equal(result.journey.cost, 10);
       assert.equal(result.character.energy, 90);
+    },
+  );
+
+  await check(
+    "published travel rules control server costs without moving or charging characters",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const before = (await db.doc(`characters/${p.user.uid}`).get()).data();
+      const rules = structuredClone(DEFAULT_TRAVEL_RULES);
+      rules.terrain.snow.cost = 9;
+      const world = await admin.call("publishWorld", {
+        world: { ...current, travelRules: rules },
+      });
+      assert.deepEqual(
+        (await db.doc(`characters/${p.user.uid}`).get()).data(),
+        before,
+      );
+      assert.deepEqual(world.travelRules, rules);
+      await assert.rejects(
+        player.call("travel", {
+          travelModel: 1,
+          destination: before,
+          worldVersion: world.version,
+          generation,
+          requestId: crypto.randomUUID(),
+        }),
+        (e) =>
+          e.code === "functions/failed-precondition" &&
+          e.message.includes("Refresh the app"),
+      );
+      assert.deepEqual(
+        (await db.doc(`characters/${p.user.uid}`).get()).data(),
+        before,
+      );
+      const start = hexAt(before, world),
+        end = { q: start.q - 1, r: start.r };
+      await assert.rejects(
+        player.call("travel", {
+          destination: center(end, world),
+          worldVersion: current.version,
+          generation,
+          requestId: crypto.randomUUID(),
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      const result = await player.call("travel", {
+        destination: center(end, world),
+        worldVersion: world.version,
+        generation,
+        cost: 0,
+        requestId: crypto.randomUUID(),
+      });
+      assert.equal(result.journey.cost, 6); // (snow 9 + forest 2) / 2, rounded once
+      assert.equal(result.character.energy, 84);
+      for (const bad of [-1, 0, 1.5, 101, "2", null]) {
+        const invalid = structuredClone(rules);
+        invalid.terrain.plains.cost = bad;
+        await assert.rejects(
+          admin.call("publishWorld", {
+            world: { ...world, travelRules: invalid },
+          }),
+          (e) => e.code === "functions/invalid-argument",
+        );
+      }
+      const invalidFeatures = {
+        ...world,
+        tiles: {
+          ...world.tiles,
+          [key(end)]: {
+            terrain: "plains",
+            features: ["hills", "mountain"],
+            river: false,
+            road: true,
+          },
+        },
+      };
+      await assert.rejects(
+        admin.call("publishWorld", { world: invalidFeatures }),
+        (e) => e.code === "functions/invalid-argument",
+      );
+      await assert.rejects(
+        player.call("publishWorld", { world }),
+        (e) => e.code === "functions/permission-denied",
+      );
+      const mountainWorld = await admin.call("publishWorld", {
+        world: {
+          ...world,
+          tiles: {
+            ...world.tiles,
+            [key(start)]: {
+              terrain: "plains",
+              features: ["mountain", "forest"],
+              river: true,
+              road: true,
+            },
+          },
+        },
+      });
+      const mountainResult = await player.call("travel", {
+        destination: center(start, mountainWorld),
+        worldVersion: mountainWorld.version,
+        generation,
+        requestId: crypto.randomUUID(),
+      });
+      assert.equal(mountainResult.journey.cost, 25); // 2 + 18 + 2 + 3; road opens passage only
     },
   );
 

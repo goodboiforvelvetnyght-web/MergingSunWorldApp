@@ -33,6 +33,8 @@ export type MapHandle = {
 };
 export type EditorTool =
   | "pan"
+  | "feature"
+  | "erase-feature"
   | "terrain"
   | "river"
   | "erase-river"
@@ -169,9 +171,15 @@ export function WorldMap(props: Props) {
     const element = container.current!;
     const isBrush = () =>
       latest.current.editor &&
-      ["terrain", "river", "erase-river", "road", "erase-road"].includes(
-        latest.current.tool,
-      );
+      [
+        "terrain",
+        "feature",
+        "erase-feature",
+        "river",
+        "erase-river",
+        "road",
+        "erase-road",
+      ].includes(latest.current.tool);
     const paintPointer = (e: PointerEvent) => {
       const p = latest.current,
         latlng = m.mouseEventToLatLng(e);
@@ -328,9 +336,15 @@ export function WorldMap(props: Props) {
           return;
         }
         if (
-          ["terrain", "river", "erase-river", "road", "erase-road"].includes(
-            p.tool,
-          )
+          [
+            "terrain",
+            "feature",
+            "erase-feature",
+            "river",
+            "erase-river",
+            "road",
+            "erase-road",
+          ].includes(p.tool)
         )
           return;
       }
@@ -485,9 +499,15 @@ export function WorldMap(props: Props) {
     const showTerrain =
       props.terrain ||
       (props.editor &&
-        ["terrain", "river", "erase-river", "road", "erase-road"].includes(
-          props.tool,
-        ));
+        [
+          "terrain",
+          "feature",
+          "erase-feature",
+          "river",
+          "erase-river",
+          "road",
+          "erase-road",
+        ].includes(props.tool));
     if (!props.grid && !showTerrain) return;
     for (const h of allHexes(props.world)) {
       const t = tileAt(h, props.world);
@@ -502,6 +522,54 @@ export function WorldMap(props: Props) {
         fillOpacity: showTerrain ? 0.3 : !props.editor && painted ? 0.25 : 0,
         interactive: false,
       }).addTo(layer);
+      if (showTerrain && t.features.length) {
+        const p = center(h, props.world),
+          size = Math.min(9, props.world.radius * 0.22);
+        t.features.forEach((feature, i) => {
+          const x = p.x + (i - (t.features.length - 1) / 2) * size * 1.8;
+          const points =
+            feature === "marsh"
+              ? [
+                  [-0.6, 0.7],
+                  [-0.6, -0.5],
+                  [-0.6, 0.2],
+                  [0.1, 0.2],
+                  [0.1, -0.7],
+                  [0.1, 0.7],
+                  [0.6, 0.7],
+                  [0.6, -0.3],
+                ]
+              : feature === "hills"
+                ? [
+                    [-0.8, 0.5],
+                    [-0.4, -0.1],
+                    [0, -0.3],
+                    [0.4, -0.1],
+                    [0.8, 0.5],
+                  ]
+                : [
+                    [-0.7, 0.6],
+                    [0, -0.7],
+                    [0.7, 0.6],
+                    [-0.7, 0.6],
+                  ];
+          L.polyline(
+            points.map(([dx, dy]) =>
+              ll({ x: x + dx * size, y: p.y + dy * size }),
+            ),
+            {
+              color:
+                feature === "forest"
+                  ? "#254f35"
+                  : feature === "marsh"
+                    ? "#486946"
+                    : "#5a4a3b",
+              weight: feature === "mountain" ? 2.5 : 1.8,
+              interactive: false,
+            },
+          ).addTo(layer);
+        });
+      }
       if (t.river && (showTerrain || props.grid)) {
         const p = center(h, props.world);
         L.polyline(

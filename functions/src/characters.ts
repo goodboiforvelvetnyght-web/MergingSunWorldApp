@@ -131,7 +131,7 @@ export const reviewCharacter = onCall(options, async (request) => {
         );
       if (
         !location ||
-        !Number.isFinite(entryCost(tileAt(hexAt(location, w), w)))
+        !Number.isFinite(entryCost(tileAt(hexAt(location, w), w), w))
       )
         throw new HttpsError(
           "failed-precondition",

@@ -114,8 +114,8 @@ export function EditorHierarchy({
   );
 }
 type RibbonProps = {
-  category: "places" | "landscape";
-  onCategory: (category: "places" | "landscape") => void;
+  category: "places" | "landscape" | "rules";
+  onCategory: (category: "places" | "landscape" | "rules") => void;
   tool: EditorTool;
   onTool: (tool: EditorTool) => void;
   editingBorder: boolean;
@@ -149,16 +149,20 @@ export function EditorRibbon(p: RibbonProps) {
       ? ([
           { id: "pan", name: "Navigate", icon: MousePointer2 },
           { id: "terrain", name: "Terrain", icon: Brush },
+          { id: "feature", name: "Add feature", icon: Layers },
+          { id: "erase-feature", name: "Erase feature", icon: Minus },
           { id: "river", name: "Add river", icon: Waves },
           { id: "erase-river", name: "Erase river", icon: Minus },
           { id: "road", name: "Add road", icon: Route },
           { id: "erase-road", name: "Erase road", icon: Minus },
         ] as const)
-      : ([
-          { id: "pan", name: "Navigate", icon: MousePointer2 },
-          { id: "border-point", name: "Select points", icon: MousePointer2 },
-          { id: "border", name: "Add border points", icon: Plus },
-        ] as const);
+      : p.category === "rules"
+        ? []
+        : ([
+            { id: "pan", name: "Navigate", icon: MousePointer2 },
+            { id: "border-point", name: "Select points", icon: MousePointer2 },
+            { id: "border", name: "Add border points", icon: Plus },
+          ] as const);
   return (
     <header className="editor-ribbon" aria-label="World editor toolbar">
       <div className="editor-ribbon-title">
@@ -194,13 +198,17 @@ export function EditorRibbon(p: RibbonProps) {
           role="group"
           aria-label="Editor category"
         >
-          {(["places", "landscape"] as const).map((category) => (
+          {(["places", "landscape", "rules"] as const).map((category) => (
             <button
               key={category}
               aria-pressed={p.category === category}
               onClick={() => p.onCategory(category)}
             >
-              {category === "places" ? "Places" : "Landscape"}
+              {category === "places"
+                ? "Places"
+                : category === "rules"
+                  ? "World Rules"
+                  : "Landscape"}
             </button>
           ))}
         </div>

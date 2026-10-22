@@ -29,7 +29,7 @@ Undo/redo reverses drawing, point insertion/deletion, corner/style changes and c
 
 **Landscape** contains terrain, river, road and erase brushes, along with the existing grid and map-artwork settings. **Grid** toggles hex outlines; painting shows terrain modifiers while the tool is active.
 
-Road tiles connect into smooth visible paths through tile centers, with branches and loops. Gameplay still uses the existing hex graph: roads halve terrain cost, river cost is added in full and the final journey total is rounded up. Visual curves do not change pathfinding, terrain or energy costs. Rivers remain tile modifiers.
+Road tiles connect into smooth visible paths through tile centers, with branches and loops. Gameplay still uses the existing hex graph: published World Rules determine terrain, feature and road costs. By default roads halve eligible costs, rivers stay full price, and mountains require a road without a discount. The final journey total is rounded up. Visual curves do not change pathfinding, terrain or energy costs. Rivers remain tile modifiers.
 
 ## Draft and publication
 

@@ -1,5 +1,6 @@
 import {
   center,
+  entryCost,
   inBounds,
   key,
   neighbors,
@@ -119,7 +120,7 @@ export function closestBorderSegment(p: Point, segments: Point[][]) {
 export function smoothRoadPaths(world: World): Point[][] {
   const nodes = new Map<string, { point: Point; links: string[] }>();
   for (const [id, tile] of Object.entries(world.tiles)) {
-    if (!tile.road || tile.terrain === "water") continue;
+    if (!tile.road || !Number.isFinite(entryCost(tile, world))) continue;
     const [q, r] = id.split(",").map(Number),
       h = { q, r };
     if (!inBounds(h, world)) continue;
@@ -130,7 +131,7 @@ export function smoothRoadPaths(world: World): Point[][] {
           (n) =>
             inBounds(n, world) &&
             tileAt(n, world).road &&
-            tileAt(n, world).terrain !== "water",
+            Number.isFinite(entryCost(tileAt(n, world), world)),
         )
         .map(key),
     });

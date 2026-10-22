@@ -39,7 +39,8 @@ describe("Walking routes", () => {
     w.tiles[key(end)] = { terrain: "forest", river: true };
     const r = findRoute(start, end, w)!;
     expect(r.cost).toBe(7);
-    expect(r.terrainCosts.forest).toBe(4);
+    expect(r.terrainCosts.plains).toBe(2);
+    expect(r.featureCosts).toEqual({ forest: 2, river: 3 });
     expect(r.riverEntries).toBe(1);
     expect(r.steps).toBe(1);
   });
@@ -211,22 +212,32 @@ describe("Road discounts and least-energy routing", () => {
     expect(entryCost({ terrain: "plains", road: true, river: false })).toBe(1);
     expect(entryCost({ terrain: "forest", road: true, river: false })).toBe(2);
     expect(entryCost({ terrain: "mountain", road: true, river: false })).toBe(
-      3.5,
+      20,
     );
     expect(entryCost({ terrain: "mountain", road: true, river: true })).toBe(
-      6.5,
+      23,
     );
     expect(entryCost({ terrain: "water", road: true, river: false })).toBe(
       Infinity,
     );
   });
-  it("rounds the whole journey once, not each entered mountain tile", () => {
+  it("rounds the whole journey once, not each entered tile", () => {
     const world = flat();
     for (const h of allHexes(world))
       world.tiles[key(h)] = { terrain: "water", river: false };
     world.tiles["8,8"] = { terrain: "plains", river: false };
-    world.tiles["9,8"] = { terrain: "mountain", road: true, river: false };
-    world.tiles["10,8"] = { terrain: "mountain", road: true, river: true };
+    world.tiles["9,8"] = {
+      terrain: "snow",
+      features: ["forest"],
+      road: true,
+      river: false,
+    };
+    world.tiles["10,8"] = {
+      terrain: "snow",
+      features: ["forest"],
+      road: true,
+      river: true,
+    };
     const single = findRoute({ q: 8, r: 8 }, { q: 9, r: 8 }, world)!;
     expect(single.rawCost).toBe(3.5);
     expect(single.cost).toBe(4);
@@ -234,7 +245,8 @@ describe("Road discounts and least-energy routing", () => {
     const double = findRoute({ q: 8, r: 8 }, { q: 10, r: 8 }, world)!;
     expect(double.rawCost).toBe(10);
     expect(double.cost).toBe(10);
-    expect(double.terrainCosts.mountain).toBe(7);
+    expect(double.terrainCosts.snow).toBe(5);
+    expect(double.featureCosts.forest).toBe(2);
     expect(double.roadSavings).toBe(7);
     expect(double.riverEntries).toBe(1);
   });

@@ -26,7 +26,8 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Full-page character creation: name → kingdom map and lore → home city and lore → backstory → optional portrait → private real name → review. Home is both birthplace and starting position.
 - Character applications require admin approval. Rejection includes a written reason and supports editing/resubmission. Replacements keep the current character playable until approval, then begin with 100 energy and separate journey history.
 - Walking route previews with an energy breakdown, immediate travel, and recent journey history.
-- **Landscape** editor with terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
+- **Landscape** editor with base terrain brushes (plains, desert, tundra, snow, coast, ocean), additive feature brushes (forest, hills, mountain, marsh, river), separate roads, three brush sizes, and undo/redo. Hills and mountains are mutually exclusive.
+- **World Rules → Travel costs** spreadsheet with costs, walking restrictions and road effects; local drafts, validation, defaults, undo and admin publication.
 - Location placement, position editing, rich-text lore, headings, lists, quotes, HTTPS images, and links. Lore is sanitized before display.
 - **Places** editor: kingdom cards → settlements → internal encyclopedia entries, with rich lore and explicit allegiance transfers.
 - Desktop world editor with a prominent tool ribbon, world hierarchy, properties panel, middle-button panning, right-click menus, and local Save draft separate from Publish world.
@@ -53,19 +54,23 @@ Deleting a kingdom or settlement requires confirmation of its descendants. A tra
 
 These are starter balancing values, defined in `shared/world.ts`:
 
-| Rule                   | Value                    |
-| ---------------------- | ------------------------ |
-| Maximum energy         | 100                      |
-| Regeneration           | 1 energy every 5 minutes |
-| Walking into plains    | 2 energy                 |
-| Walking into forest    | 4 energy                 |
-| Walking into mountains | 7 energy                 |
-| Road modifier          | 50% of terrain cost      |
-| River modifier         | +3 energy on every entry |
-| Water                  | Impassable on foot       |
-| Approximate distance   | 5 km per hex step        |
+| Rule                            | Value                                               |
+| ------------------------------- | --------------------------------------------------- |
+| Maximum energy                  | 100                                                 |
+| Regeneration                    | 1 energy every 5 minutes                            |
+| Plains / desert / tundra / snow | 2 / 4 / 3 / 5 energy                                |
+| Forest / hills / marsh          | +2 / +3 / +4 energy                                 |
+| Mountain feature                | +18; requires a road; no discount on the entire hex |
+| River feature                   | +3 energy on entry, unaffected by roads             |
+| Road                            | Halves eligible base and feature costs              |
+| Coast / ocean                   | Walking blocked, even on roads                      |
+| Distance per hex                | 5 km                                                |
 
-Routes minimize energy expenditure using a minimum cost of 1 per step. Roads halve only terrain cost (plains 1, forest 2, mountains 3.5); river surcharges are added in full. Fractions are kept during pathfinding and the final journey total is rounded up once. The starting tile is free. Rivers are tile modifiers, with no directional crossing or spline mechanics. A route's distance counts its steps, including detours. Regeneration is calculated from timestamps on demand, without recurring server jobs. Travel costs and positions are calculated independently on the backend; a browser-provided cost is never trusted.
+These are initial defaults, configurable in **World editor → World Rules**. One base terrain combines with multiple features. Roads on plains cost 1; a forest road on plains costs 2; a mountain road on plains costs 20. River costs are added in full by default. The sheet exposes numeric costs, walking rules (allowed, blocked, requires road), and road effects (50% discount, no discount on this cost, no discount on the entire hex). Publication checks all rules on the server and does not itself move characters or alter energy. Starting settlements must remain walkable and occupied tiles cannot newly become impassable.
+
+Routes minimize total energy using A* with an admissible minimum step cost of 0.5 (base costs are integers ≥1 and the maximum discount is 50%). Fractions are retained during pathfinding; the final journey total is rounded up once. The starting tile is free. Rivers are tile features with no directional crossing or spline mechanics. Distance counts steps, including detours. Regeneration uses timestamps without recurring jobs. The backend independently calculates travel prices, checks the published world version and rejects old app travel models; a browser-provided cost is never trusted.
+
+Legacy forest and mountain tiles become plains plus their corresponding feature; legacy water becomes ocean. Road and river flags are preserved. Migration is additive within world schema 2 and is persisted on the next publication. An existing character on a newly restricted legacy mountain keeps its position and energy and can leave for a reachable hex. See [terrain and rules guide](docs/terrain-and-travel-rules.md).
 
 **Changing grid size or alignment returns characters with a surviving origin to that settlement, without changing energy. Characters whose origin was deleted keep their map position.** The editor explicitly confirms grid changes. Terrain painting transfers by nearest old tile center and should be reviewed. Changing grid visibility does not reset anyone. Deleting a place never moves its characters. Display names and allegiance can change without changing a settlement ID.
 
