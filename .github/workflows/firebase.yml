@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      upload_diagnostics:
+        description: Read recent map upload errors without deploying
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,8 +25,33 @@ env:
   FIREBASE_PROJECT: mergingsunapp-2
 
 jobs:
+  upload-diagnostics:
+    name: Read map upload diagnostics
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.upload_diagnostics == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: mergingsunapp-2
+          workload_identity_provider: projects/277886772831/locations/global/workloadIdentityPools/merging-sun-github/providers/github
+          service_account: github-deploy@mergingsunapp-2.iam.gserviceaccount.com
+      - name: Read upload function configuration
+        run: gcloud functions describe uploadWorldAsset --gen2 --region asia-southeast1 --project "$FIREBASE_PROJECT" --format='yaml(state,serviceConfig.availableMemory,serviceConfig.timeoutSeconds,serviceConfig.maxInstanceRequestConcurrency)'
+      - name: Read recent upload errors
+        run: >-
+          gcloud logging read
+          'resource.type="cloud_run_revision" AND resource.labels.service_name="uploadworldasset" AND severity>=ERROR'
+          --project "$FIREBASE_PROJECT" --freshness=2d --limit=15
+          --format='json(timestamp,severity,textPayload,jsonPayload.message,httpRequest.status,httpRequest.latency)'
+
   validate:
     name: Build and test
+    if: inputs.upload_diagnostics != true
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     outputs:
