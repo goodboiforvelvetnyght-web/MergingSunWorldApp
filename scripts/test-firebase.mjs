@@ -47,7 +47,10 @@ function client(name) {
   return {
     auth,
     store,
-    call: (n, data) => httpsCallable(functions, n)(data).then((r) => r.data),
+    call: (n, data) =>
+      httpsCallable(functions, n, {
+        timeout: n === "processMapUpload" ? 600000 : 70000,
+      })(data).then((r) => r.data),
   };
 }
 const player = client("player"),
@@ -731,6 +734,8 @@ try {
     admin,
     db,
   });
+  const { testLargeMaps } = await import("./test-large-maps.mjs");
+  await testLargeMaps({ check, admin, player, other, db });
   console.log(`Firebase integration: ${passed} checks passed.`);
   process.exit(0);
 } catch (e) {

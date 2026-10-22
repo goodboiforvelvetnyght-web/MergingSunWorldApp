@@ -1,3 +1,12 @@
+import { MapAlignment } from "./components/MapAlignment";
+import {
+  alignMapArtwork,
+  gridChangedAfterAlignment,
+  mapTransform,
+  transformPoint,
+  sameMapSize,
+} from "../shared/mapAlignment";
+import type { MapArtwork } from "../shared/mapImages";
 import { WorldAssetUpload } from "./components/WorldAssets";
 import {
   CharacterReview,
@@ -80,6 +89,7 @@ import { auth } from "./firebase";
 import {
   DEFAULT_WORLD,
   normalizeWorld,
+  worldSize,
   internalLocations,
   characterAfterWorldChange,
   characterGeneration,
@@ -181,6 +191,7 @@ export default function App() {
   const [editLocation, setEditLocation] = useState<Location | null>(null),
     [busy, setBusy] = useState(false),
     [assetBusy, setAssetBusy] = useState(false),
+    [pendingArtwork, setPendingArtwork] = useState<MapArtwork | null>(null),
     [toast, setToast] = useState<{ text: string; error?: boolean } | null>(
       null,
     ),
@@ -231,6 +242,7 @@ export default function App() {
   useLayoutEffect(() => {
     setTab("atlas");
     setDraft(null);
+    setPendingArtwork(null);
     setSelected(null);
     setPast([]);
     setFuture([]);
@@ -385,10 +397,17 @@ export default function App() {
   }
   async function publish(confirmed = false) {
     if (!draft) return;
-    const geometryChanged =
-      draft.radius !== published.radius ||
-      draft.offsetX !== published.offsetX ||
-      draft.offsetY !== published.offsetY;
+    const geometryChanged = gridChangedAfterAlignment(published, draft);
+    const alignedCharacter = (c: Character) =>
+      draft.mapAlignment
+        ? {
+            ...c,
+            ...transformPoint(
+              c,
+              mapTransform(published, draft, draft.mapAlignment.mode),
+            ),
+          }
+        : c;
     if (geometryChanged && !confirmed) {
       setGridConfirm(true);
       return;
@@ -400,7 +419,7 @@ export default function App() {
           throw new Error("Starting settlements must be walkable.");
       if (character) {
         const updated = characterAfterWorldChange(
-          character,
+          alignedCharacter(character),
           draft,
           geometryChanged,
         );
@@ -412,10 +431,11 @@ export default function App() {
       let next: World;
       if (isDemo) {
         next = { ...draft, version: published.version + 1 };
+        delete next.mapAlignment;
         saveLocal("ms:world-backup:v1", published);
         if (demoCharacter) {
           const updated = characterAfterWorldChange(
-            demoCharacter,
+            alignedCharacter(demoCharacter),
             next,
             geometryChanged,
           );
@@ -1316,13 +1336,22 @@ export default function App() {
                     onBusyChange={setAssetBusy}
                     value={draft.mapAssetId}
                     demo={isDemo}
-                    onChange={(mapAssetId, mapNativeZoom) =>
-                      changeWorld({
+                    onChange={(mapAssetId, mapNativeZoom, artwork) => {
+                      const art = artwork ?? {
+                        id: mapAssetId,
+                        nativeZoom: mapNativeZoom ?? 3,
+                        mapWidth: 2400,
+                        mapHeight: 1800,
+                      };
+                      const target = {
                         ...draft,
-                        mapAssetId,
-                        mapNativeZoom: mapNativeZoom ?? 3,
-                      })
-                    }
+                        mapWidth: art.mapWidth,
+                        mapHeight: art.mapHeight,
+                      };
+                      if (sameMapSize(draft, target))
+                        changeWorld(alignMapArtwork(draft, art, "fit"));
+                      else setPendingArtwork(art);
+                    }}
                   />
                   <button
                     className="disclosure"
@@ -1340,13 +1369,16 @@ export default function App() {
                   {gridSettings && (
                     <div className="grid-settings">
                       <label>
-                        Hex radius <strong>{draft.radius} px</strong>
+                        Hex radius{" "}
+                        <strong>
+                          {Number(draft.radius.toFixed(2))} map units
+                        </strong>
                         <input
                           aria-label="Hex radius"
                           type="range"
-                          min={28}
-                          max={80}
-                          step={2}
+                          min={16}
+                          max={128}
+                          step="any"
                           value={draft.radius}
                           onChange={(e) =>
                             resizeGrid(
@@ -1363,15 +1395,15 @@ export default function App() {
                           <input
                             aria-label="Grid offset X"
                             type="number"
-                            min={-80}
-                            max={80}
+                            min={-256}
+                            max={256}
                             value={draft.offsetX}
                             onChange={(e) =>
                               resizeGrid(
                                 draft.radius,
                                 Math.max(
-                                  -80,
-                                  Math.min(80, Number(e.target.value)),
+                                  -256,
+                                  Math.min(256, Number(e.target.value)),
                                 ),
                                 draft.offsetY,
                               )
@@ -1383,16 +1415,16 @@ export default function App() {
                           <input
                             aria-label="Grid offset Y"
                             type="number"
-                            min={-80}
-                            max={80}
+                            min={-256}
+                            max={256}
                             value={draft.offsetY}
                             onChange={(e) =>
                               resizeGrid(
                                 draft.radius,
                                 draft.offsetX,
                                 Math.max(
-                                  -80,
-                                  Math.min(80, Number(e.target.value)),
+                                  -256,
+                                  Math.min(256, Number(e.target.value)),
                                 ),
                               )
                             }
@@ -1400,12 +1432,12 @@ export default function App() {
                         </label>
                       </div>
                       <p className="fine-print">
-                        Pointy-top hexes · 5 km per step. Changing grid size or
-                        alignment returns characters with an origin to their
-                        original starting settlement when published. Characters
-                        without an origin keep their map position. Energy is
-                        unchanged. Paint transfers by tile center; inspect
-                        before saving.
+                        Pointy-top hexes · 5 km per step. Image resolution does
+                        not change this grid. Changing grid size or alignment
+                        returns characters with an origin to their original
+                        starting settlement when published. Characters without
+                        an origin keep their map position. Energy is unchanged.
+                        Paint transfers by tile center; inspect before saving.
                       </p>
                     </div>
                   )}
@@ -1568,7 +1600,17 @@ export default function App() {
             world={world}
             population={isDemo ? undefined : cloud.population}
             onKingdom={editor ? undefined : setViewKingdom}
-            character={character}
+            character={
+              character && world.mapAlignment
+                ? {
+                    ...character,
+                    ...transformPoint(
+                      character,
+                      mapTransform(published, world, world.mapAlignment.mode),
+                    ),
+                  }
+                : character
+            }
             selected={destination}
             route={route}
             grid={grid}
@@ -2092,7 +2134,8 @@ export default function App() {
             location={editLocation}
             key={editLocation.id}
             kingdoms={draft.territories}
-            scope={`${cloud.user?.uid ?? "demo"}:${published.version}`}
+            mapSize={worldSize(draft)}
+            scope={`${cloud.user?.uid ?? "demo"}:${published.version}:${worldSize(draft).width}x${worldSize(draft).height}`}
             onClose={() => setEditLocation(null)}
             onSave={(l) => {
               changeWorld({
@@ -2161,6 +2204,22 @@ export default function App() {
             </button>
           </div>
         </Modal>
+      )}
+      {pendingArtwork && draft && (
+        <MapAlignment
+          world={draft}
+          artwork={pendingArtwork}
+          onClose={() => setPendingArtwork(null)}
+          onApply={(next) => {
+            changeWorld(next);
+            setPendingArtwork(null);
+            setSelected(null);
+            setDraftBorder([]);
+            notice(
+              "Map alignment saved to draft. Review the map, then publish.",
+            );
+          }}
+        />
       )}
       {gridConfirm && (
         <Modal

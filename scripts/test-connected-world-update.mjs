@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { expect } from "@playwright/test";
 import sharp from "sharp";
+import { randomBytes } from "node:crypto";
 import {
   DEFAULT_WORLD,
   makeCharacter,
@@ -22,6 +23,12 @@ export async function testConnectedWorldUpdate({
     },
   })
     .png()
+    .toBuffer();
+  const mapBytes = await sharp(randomBytes(3969 * 1814 * 3), {
+    raw: { width: 3969, height: 1814, channels: 3 },
+  })
+    .blur(1)
+    .jpeg({ quality: 88 })
     .toBuffer();
   // An existing approved resident is a fixture; all entering and inspection uses the real UI/backend.
   await db.doc(`characters/${owner.uid}`).set({
@@ -54,7 +61,7 @@ export async function testConnectedWorldUpdate({
     const waitingUpload = new Promise((resolve) => {
       finishTimedOutUpload = resolve;
     });
-    await page.route("**/uploadWorldAsset", async (route) => {
+    await page.route("**/processMapUpload", async (route) => {
       await waitingUpload;
       await route.fulfill({
         status,
@@ -63,14 +70,13 @@ export async function testConnectedWorldUpdate({
       });
     });
     await page.getByLabel("Upload map artwork", { exact: true }).setInputFiles({
-      name: "timeout.jpg",
+      name: "world.jpg",
       mimeType: "image/jpeg",
-      buffer: bytes,
+      buffer: mapBytes,
     });
+    await expect(page.getByText("Checking original image…")).toBeVisible();
     await expect(
-      page.getByText(
-        "Uploading artwork and preparing map tiles… Large maps may take several minutes. Keep this page open.",
-      ),
+      page.getByRole("progressbar", { name: "Map processing progress" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Publish world", exact: true }),
@@ -87,7 +93,7 @@ export async function testConnectedWorldUpdate({
     await expect(page.getByLabel("Grid offset X", { exact: true })).toHaveValue(
       "1",
     );
-    await page.unroute("**/uploadWorldAsset");
+    await page.unroute("**/processMapUpload");
   }
   await page
     .getByRole("button", { name: "Undo map edit", exact: true })
@@ -95,9 +101,51 @@ export async function testConnectedWorldUpdate({
   await expect(page.getByLabel("Grid offset X", { exact: true })).toHaveValue(
     "0",
   );
+  await page.getByLabel("Upload map artwork", { exact: true }).setInputFiles({
+    name: "world.jpg",
+    mimeType: "image/jpeg",
+    buffer: mapBytes,
+  });
+  await expect(
+    page.getByRole("dialog", { name: "Align the world with this map" }),
+  ).toBeVisible({ timeout: 60000 });
+  await expect(
+    page.locator(".map-alignment-preview .leaflet-tile-loaded").first(),
+  )
+    .toBeVisible({ timeout: 15000 })
+    .catch(async (error) => {
+      console.log(
+        "Alignment diagnostics",
+        await page
+          .locator(".map-alignment-preview .map-canvas")
+          .evaluate((el) => ({
+            zoom: el.dataset.mapZoom,
+            rect: el.getBoundingClientRect().toJSON(),
+            tiles: [...el.querySelectorAll(".leaflet-tile")].map((img) => ({
+              src: img.src,
+              complete: img.complete,
+              width: img.naturalWidth,
+            })),
+            html: el.innerHTML.slice(0, 1000),
+          })),
+      );
+      await page.screenshot({ path: "/tmp/ms-alignment-failure.png" });
+      throw error;
+    });
+  await expect
+    .poll(async () =>
+      Number(
+        await page
+          .locator(".map-alignment-preview .map-canvas")
+          .getAttribute("data-map-zoom"),
+      ),
+    )
+    .toBeLessThan(2);
+  if (process.env.MAP_ALIGNMENT_SCREENSHOT)
+    await page.screenshot({ path: process.env.MAP_ALIGNMENT_SCREENSHOT });
   await page
-    .getByLabel("Upload map artwork", { exact: true })
-    .setInputFiles({ name: "world.png", mimeType: "image/png", buffer: bytes });
+    .getByRole("button", { name: "Use this alignment in draft", exact: true })
+    .click();
   await expect(page.getByAltText("Map artwork preview")).toBeVisible({
     timeout: 30000,
   });

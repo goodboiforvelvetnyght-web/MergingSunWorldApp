@@ -44,6 +44,12 @@ export type World = {
   schemaVersion: 2;
   mapAssetId?: string | null;
   mapNativeZoom?: number;
+  mapWidth?: number;
+  mapHeight?: number;
+  mapLayout?: "natural";
+  terrainBase?: "water";
+  /** Draft-only alignment; the server strips this after migrating characters. */
+  mapAlignment?: { baseVersion: number; mode: "fit" | "unpad" };
   version: number;
   radius: number;
   offsetX: number;
@@ -194,24 +200,34 @@ export function baseTile(p: Point, radius: number): Tile {
   };
 }
 export const tileAt = (h: Hex, w: World): Tile =>
-  w.tiles[key(h)] ?? baseTile(center(h, w), w.radius);
+  w.tiles[key(h)] ??
+  (w.terrainBase === "water"
+    ? { terrain: "water", river: false, road: false }
+    : baseTile(center(h, w), w.radius));
+export function worldSize(w: Pick<World, "mapWidth" | "mapHeight">) {
+  return { width: w.mapWidth ?? WIDTH, height: w.mapHeight ?? HEIGHT };
+}
 export const entryCost = (t: Tile) =>
   COSTS[t.terrain] * (t.road ? 0.5 : 1) + (t.river ? RIVER_COST : 0);
 export function inBounds(h: Hex, w: World) {
   const p = center(h, w);
-  return p.x >= 0 && p.y >= 0 && p.x <= WIDTH && p.y <= HEIGHT;
+  const { width, height } = worldSize(w);
+  return (
+    p.x >= -1e-7 && p.y >= -1e-7 && p.x <= width + 1e-7 && p.y <= height + 1e-7
+  );
 }
 export function allHexes(w: World): Hex[] {
-  const list: Hex[] = [];
-  for (let r = -2; r <= Math.ceil(HEIGHT / (w.radius * 1.5)) + 2; r++)
-    for (
-      let q = -Math.ceil(HEIGHT / w.radius);
-      q <= Math.ceil(WIDTH / (w.radius * Math.sqrt(3))) + 2;
-      q++
-    ) {
-      const h = { q, r };
-      if (inBounds(h, w)) list.push(h);
-    }
+  const list: Hex[] = [],
+    { width, height } = worldSize(w);
+  const rMin = Math.floor(-w.offsetY / (w.radius * 1.5)) - 1;
+  const rMax = Math.ceil((height - w.offsetY) / (w.radius * 1.5)) + 1;
+  for (let r = rMin; r <= rMax; r++) {
+    const qMin = Math.floor(-w.offsetX / (w.radius * Math.sqrt(3)) - r / 2) - 1;
+    const qMax =
+      Math.ceil((width - w.offsetX) / (w.radius * Math.sqrt(3)) - r / 2) + 1;
+    for (let q = qMin; q <= qMax; q++)
+      if (inBounds({ q, r }, w)) list.push({ q, r });
+  }
   return list;
 }
 export function neighbors(h: Hex): Hex[] {

@@ -27,3 +27,9 @@ The deployment workflow checks the runtime's effective Storage permissions befor
 Production logs identified two map uploads ending with HTTP 504 at the former 120-second deadline. Map preparation now reuses decoded pixel buffers, overlaps up to eight Storage writes, and permits one upload per function instance with a 300-second deadline. The browser allows 360 seconds and shows an upload-specific retry message on failure.
 
 The image integration check now uploads a detailed 3969 × 1814 JPEG larger than 2 MB, verifies high-resolution tiles contain image detail, and checks the edge tile. The connected browser check simulates a gateway timeout, verifies publishing stays disabled during processing and unlocks afterward, then successfully retries the upload without changing the published map until requested.
+
+## Natural proportions and large uploads — 22 October 2026
+
+The unit suite now has 24 checks, including uniform terrain/place/grid transforms, unchanged route energy, equal-aspect artwork replacement, legacy unpadding, and complete hex enumeration with translated grids and portrait bounds. Firebase integration adds five checks for private chunk tickets and originals, a JPEG over 6 MiB at the full 8192-pixel edge, native zoom-5 tiles, upload idempotency, invalid dimensions and checksums, atomic character/population migration, restoration guards and orphaned origins. The 31 prior integration checks remain.
+
+The connected browser suite uses a detailed 3969 × 1814 JPEG, exercises upload/processing progress, simulated 504 and 500 responses, reselect-to-resume, draft preservation, a visual alignment preview, publication and shared-room access after coordinate migration. Production smoke checks include authorization on all three new upload callables and create no users or world content.

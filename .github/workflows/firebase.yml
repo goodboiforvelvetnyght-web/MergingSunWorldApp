@@ -43,10 +43,12 @@ jobs:
           service_account: github-deploy@mergingsunapp-2.iam.gserviceaccount.com
       - name: Read upload function configuration
         run: gcloud functions describe uploadWorldAsset --gen2 --region asia-southeast1 --project "$FIREBASE_PROJECT" --format='yaml(state,serviceConfig.availableMemory,serviceConfig.timeoutSeconds,serviceConfig.maxInstanceRequestConcurrency)'
+      - name: Read large-map function configuration
+        run: gcloud functions describe processMapUpload --gen2 --region asia-southeast1 --project "$FIREBASE_PROJECT" --format='yaml(state,serviceConfig.availableMemory,serviceConfig.timeoutSeconds,serviceConfig.maxInstanceRequestConcurrency)'
       - name: Read recent upload errors
         run: >-
           gcloud logging read
-          'resource.type="cloud_run_revision" AND resource.labels.service_name="uploadworldasset" AND severity>=ERROR'
+          'resource.type="cloud_run_revision" AND (resource.labels.service_name="uploadworldasset" OR resource.labels.service_name="processmapupload" OR resource.labels.service_name="uploadmapchunk") AND severity>=ERROR'
           --project "$FIREBASE_PROJECT" --freshness=2d --limit=15
           --format='json(timestamp,severity,textPayload,jsonPayload.message,httpRequest.status,httpRequest.latency)'
 

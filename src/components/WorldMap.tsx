@@ -12,8 +12,7 @@ import {
   tileAt,
   TERRAIN_COLORS,
   key,
-  WIDTH,
-  HEIGHT,
+  worldSize,
   type World,
   type Point,
   type Hex,
@@ -80,22 +79,23 @@ export function WorldMap(props: Props) {
       crs: L.CRS.Simple,
       zoomControl: false,
       attributionControl: false,
-      minZoom: 0,
-      maxZoom: 5,
+      minZoom: -1,
+      maxZoom: 7,
       zoomSnap: 0.25,
       zoomDelta: 0.5,
       preferCanvas: true,
       maxBoundsViscosity: 0.7,
     });
     map.current = m;
+    const { width, height } = worldSize(props.world);
     const bounds = L.latLngBounds(
-      ll({ x: 0, y: HEIGHT }),
-      ll({ x: WIDTH, y: 0 }),
+      ll({ x: 0, y: height }),
+      ll({ x: width, y: 0 }),
     );
     m.setMaxBounds(bounds.pad(0.22));
     m.fitBounds(bounds, { padding: [20, 20] });
     if (container.current!.clientWidth < 600 && !props.fitWholeWorld)
-      m.setView(ll(props.character ?? { x: 1200, y: 900 }), 1.75);
+      m.setView(ll(props.character ?? { x: width / 2, y: height / 2 }), 1.75);
     for (const name of [
       "territories",
       "emblems",
@@ -157,7 +157,8 @@ export function WorldMap(props: Props) {
     m.on("click", (e: L.LeafletMouseEvent) => {
       const p = latest.current,
         point = getPoint(e);
-      if (point.x < 0 || point.y < 0 || point.x > WIDTH || point.y > HEIGHT)
+      const { width, height } = worldSize(p.world);
+      if (point.x < 0 || point.y < 0 || point.x > width || point.y > height)
         return;
       if (p.editor) {
         if (p.tool === "location") {
@@ -179,11 +180,30 @@ export function WorldMap(props: Props) {
     });
     m.on("zoomend", () => setZoom(m.getZoom()));
     setZoom(m.getZoom());
-    const ro = new ResizeObserver(() => m.invalidateSize());
+    let layoutReady = element.clientWidth > 0 && element.clientHeight > 0;
+    const ro = new ResizeObserver(() => {
+      m.invalidateSize();
+      // A map inside a closed dialog initially has no size. Fit it once visible.
+      if (!layoutReady && element.clientWidth > 0 && element.clientHeight > 0) {
+        const { width, height } = worldSize(latest.current.world);
+        m.fitBounds(
+          L.latLngBounds(ll({ x: 0, y: height }), ll({ x: width, y: 0 })),
+          { padding: [20, 20] },
+        );
+        layoutReady = true;
+        setZoom(m.getZoom());
+      }
+    });
     ro.observe(container.current!);
     props.onReady({
       zoom: (d) => m.setZoom(m.getZoom() + d),
-      home: () => m.fitBounds(bounds, { padding: [20, 20] }),
+      home: () => {
+        const { width, height } = worldSize(latest.current.world);
+        m.fitBounds(
+          L.latLngBounds(ll({ x: 0, y: height }), ll({ x: width, y: 0 })),
+          { padding: [20, 20] },
+        );
+      },
       focus: (p) =>
         m.flyTo(ll(p), Math.max(m.getZoom(), 2.1), { duration: 0.6 }),
       focusBounds: (points) => {
@@ -207,9 +227,10 @@ export function WorldMap(props: Props) {
   useEffect(() => {
     const m = map.current;
     if (!m) return;
+    const { width, height } = worldSize(props.world);
     const bounds = L.latLngBounds(
-      ll({ x: 0, y: HEIGHT }),
-      ll({ x: WIDTH, y: 0 }),
+      ll({ x: 0, y: height }),
+      ll({ x: width, y: 0 }),
     );
     const tile = L.tileLayer(
       props.world.mapAssetId
@@ -217,9 +238,10 @@ export function WorldMap(props: Props) {
         : "/map/tiles/{z}/{x}/{y}.webp",
       {
         tileSize: 256,
-        minZoom: 0,
-        maxZoom: 5,
-        maxNativeZoom: props.world.mapNativeZoom === 4 ? 4 : 3,
+        minZoom: -1,
+        minNativeZoom: 0,
+        maxZoom: 7,
+        maxNativeZoom: props.world.mapNativeZoom ?? 3,
         noWrap: true,
         bounds,
         keepBuffer: 3,
@@ -229,7 +251,23 @@ export function WorldMap(props: Props) {
     return () => {
       tile.remove();
     };
-  }, [props.world.mapAssetId, props.world.mapNativeZoom]);
+  }, [
+    props.world.mapAssetId,
+    props.world.mapNativeZoom,
+    props.world.mapWidth,
+    props.world.mapHeight,
+  ]);
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const { width, height } = worldSize(props.world);
+    const bounds = L.latLngBounds(
+      ll({ x: 0, y: height }),
+      ll({ x: width, y: 0 }),
+    );
+    m.setMaxBounds(bounds.pad(0.22));
+    m.fitBounds(bounds, { padding: [20, 20] });
+  }, [props.world.mapWidth, props.world.mapHeight]);
   useEffect(() => {
     const layer = layers.current.emblems;
     if (!layer) return;
@@ -492,6 +530,7 @@ export function WorldMap(props: Props) {
       ref={container}
       aria-label="Interactive world map"
       data-testid="world-map"
+      data-map-zoom={zoom}
     />
   );
 }

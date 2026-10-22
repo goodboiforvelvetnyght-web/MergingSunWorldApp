@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import DOMPurify from "dompurify";
 import {
+  worldSize,
   removeKingdom,
   type World,
   type Kingdom,
@@ -134,7 +135,11 @@ export function PlacesEditor({
               <input
                 type="number"
                 min={0}
-                max={axis === "x" ? 2400 : 1800}
+                max={
+                  axis === "x"
+                    ? worldSize(world).width
+                    : worldSize(world).height
+                }
                 step="any"
                 value={kingdomEdit.emblemPosition?.[axis] ?? ""}
                 onChange={(e) =>
@@ -203,7 +208,7 @@ export function PlacesEditor({
                 <input
                   type="number"
                   min={0}
-                  max={2400}
+                  max={worldSize(world).width}
                   step="any"
                   required
                   value={p.x}
@@ -221,7 +226,7 @@ export function PlacesEditor({
                 <input
                   type="number"
                   min={0}
-                  max={1800}
+                  max={worldSize(world).height}
                   step="any"
                   required
                   value={p.y}

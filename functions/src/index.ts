@@ -1,3 +1,8 @@
+export {
+  beginMapUpload,
+  uploadMapChunk,
+  processMapUpload,
+} from "./mapUploads.js";
 export { storageReadiness } from "./storageReadiness.js";
 import { randomUUID } from "node:crypto";
 import { savePortrait, validateAsset } from "./assets.js";
@@ -16,6 +21,13 @@ export {
   migrateLegacyPortraits,
 } from "./characters.js";
 import { db } from "./firebase.js";
+import {
+  sameMapSize,
+  gridChangedAfterAlignment,
+  mapTransform,
+  transformPoint,
+  pointOnMap,
+} from "../../shared/mapAlignment.js";
 import { requireAdmin } from "./adminInvitations.js";
 export {
   generateAdminInvitation,
@@ -27,6 +39,8 @@ import { setGlobalOptions } from "firebase-functions/v2";
 import {
   DEFAULT_WORLD,
   normalizeWorld,
+  worldSize,
+  inBounds,
   characterAfterWorldChange,
   makeCharacter,
   characterGeneration,
@@ -64,7 +78,10 @@ function textField(
     throw new HttpsError("invalid-argument", `Invalid ${name}.`);
   return value.trim();
 }
-function point(v: unknown): v is { x: number; y: number } {
+function point(
+  v: unknown,
+  bounds = { width: 2400, height: 2400 },
+): v is { x: number; y: number } {
   return (
     !!v &&
     typeof v === "object" &&
@@ -74,10 +91,10 @@ function point(v: unknown): v is { x: number; y: number } {
     typeof v.y === "number" &&
     Number.isFinite(v.x) &&
     Number.isFinite(v.y) &&
-    v.x >= 0 &&
-    v.x <= 2400 &&
-    v.y >= 0 &&
-    v.y <= 1800
+    v.x >= -1e-6 &&
+    v.x <= bounds.width + 1e-6 &&
+    v.y >= -1e-6 &&
+    v.y <= bounds.height + 1e-6
   );
 }
 function portraitField(value: unknown): string {
@@ -312,23 +329,37 @@ function validateWorld(input: unknown): World {
     w.schemaVersion !== 2 ||
     !Number.isInteger(w.version) ||
     w.version < 0 ||
-    !Number.isInteger(w.radius) ||
-    w.radius < 28 ||
-    w.radius > 80 ||
+    !Number.isFinite(w.radius) ||
+    w.radius < 16 ||
+    w.radius > 128 ||
     !Number.isFinite(w.offsetX) ||
     !Number.isFinite(w.offsetY) ||
-    Math.abs(w.offsetX) > 80 ||
-    Math.abs(w.offsetY) > 80 ||
+    Math.abs(w.offsetX) > 256 ||
+    Math.abs(w.offsetY) > 256 ||
+    !Number.isFinite(w.mapWidth ?? 2400) ||
+    !Number.isFinite(w.mapHeight ?? 1800) ||
+    (w.mapWidth ?? 2400) < 1 ||
+    (w.mapWidth ?? 2400) > 2400 ||
+    (w.mapHeight ?? 1800) < 1 ||
+    (w.mapHeight ?? 1800) > 2400 ||
+    (w.terrainBase !== undefined && w.terrainBase !== "water") ||
     !w.tiles ||
     typeof w.tiles !== "object" ||
     Array.isArray(w.tiles) ||
-    Object.keys(w.tiles).length > 5000 ||
+    Object.keys(w.tiles).length > 10000 ||
     !Array.isArray(w.locations) ||
     w.locations.length > 200 ||
     !Array.isArray(w.territories) ||
     w.territories.length > 30
   )
     throw new HttpsError("invalid-argument", "World limits exceeded.");
+  const bounds = worldSize(w);
+  if (
+    w.mapAlignment &&
+    (!Number.isInteger(w.mapAlignment.baseVersion) ||
+      !["fit", "unpad"].includes(w.mapAlignment.mode))
+  )
+    throw new HttpsError("invalid-argument", "Invalid map alignment.");
   const tiles: World["tiles"] = {};
   for (const [k, t] of Object.entries(w.tiles)) {
     if (
@@ -356,8 +387,8 @@ function validateWorld(input: unknown): World {
       !Array.isArray(t.points) ||
       t.points.length < 3 ||
       t.points.length > 150 ||
-      !t.points.every(point) ||
-      (t.emblemPosition != null && !point(t.emblemPosition)) ||
+      !t.points.every((p) => point(p, bounds)) ||
+      (t.emblemPosition != null && !point(t.emblemPosition, bounds)) ||
       (t.emblemAssetId != null &&
         (typeof t.emblemAssetId !== "string" ||
           !/^[\w-]{36}$/.test(t.emblemAssetId)))
@@ -379,7 +410,7 @@ function validateWorld(input: unknown): World {
   const locations = w.locations.map((l) => {
     if (
       !l ||
-      !point(l) ||
+      !point(l, bounds) ||
       !["town", "city", "village", "landmark"].includes(l.kind) ||
       typeof l.starting !== "boolean"
     )
@@ -433,6 +464,18 @@ function validateWorld(input: unknown): World {
   const clean: World = {
     schemaVersion: 2,
     mapAssetId: w.mapAssetId ?? null,
+    mapWidth: bounds.width,
+    mapHeight: bounds.height,
+    ...(w.mapLayout === "natural" ? { mapLayout: "natural" as const } : {}),
+    ...(w.terrainBase === "water" ? { terrainBase: "water" as const } : {}),
+    ...(w.mapAlignment
+      ? {
+          mapAlignment: {
+            baseVersion: w.mapAlignment.baseVersion,
+            mode: w.mapAlignment.mode,
+          },
+        }
+      : {}),
     version: w.version,
     radius: w.radius,
     offsetX: w.offsetX,
@@ -442,7 +485,10 @@ function validateWorld(input: unknown): World {
     territories,
   };
   for (const l of locations.filter((l) => l.starting))
-    if (!Number.isFinite(entryCost(tileAt(hexAt(l, clean), clean))))
+    if (
+      !inBounds(hexAt(l, clean), clean) ||
+      !Number.isFinite(entryCost(tileAt(hexAt(l, clean), clean)))
+    )
       throw new HttpsError(
         "invalid-argument",
         "Starting settlements must be walkable.",
@@ -458,7 +504,18 @@ export const publishWorld = onCall(async (request) => {
   await requireAdmin(request.auth);
   const world = validateWorld(request.data?.world);
   const mapAsset = await validateAsset(world.mapAssetId, "map");
-  world.mapNativeZoom = mapAsset?.nativeZoom === 4 ? 4 : 3;
+  world.mapNativeZoom = mapAsset?.nativeZoom ?? 3;
+  const natural = mapAsset?.mapLayout === "natural";
+  if (
+    world.mapWidth !== (natural ? mapAsset.mapWidth : 2400) ||
+    world.mapHeight !== (natural ? mapAsset.mapHeight : 1800)
+  )
+    throw new HttpsError(
+      "failed-precondition",
+      "Apply this map’s alignment preview before publishing.",
+    );
+  if (natural) world.mapLayout = "natural";
+  else delete world.mapLayout;
   await Promise.all(
     world.territories.map((k) => validateAsset(k.emblemAssetId, "emblem")),
   );
@@ -476,11 +533,27 @@ export const publishWorld = onCall(async (request) => {
         "resource-exhausted",
         "This version supports world publishing for up to 400 characters. A batched migration is required for larger worlds.",
       );
-    const geometryChanged =
-      world.radius !== previous.radius ||
-      world.offsetX !== previous.offsetX ||
-      world.offsetY !== previous.offsetY;
+    if (!sameMapSize(previous, world) && !world.mapAlignment)
+      throw new HttpsError(
+        "failed-precondition",
+        "Preview and apply map alignment before changing world proportions.",
+      );
+    if (
+      world.mapAlignment &&
+      (world.mapAlignment.baseVersion !== previous.version ||
+        (world.mapAlignment.mode === "unpad" &&
+          previous.mapLayout === "natural"))
+    )
+      throw new HttpsError(
+        "failed-precondition",
+        "This map alignment is stale or does not apply to the previous artwork.",
+      );
+    const geometryChanged = gridChangedAfterAlignment(previous, world);
+    const alignment = world.mapAlignment
+      ? mapTransform(previous, world, world.mapAlignment.mode)
+      : null;
     const next = { ...world, version: previous.version + 1 };
+    delete next.mapAlignment;
     // A legacy unassigned place can be kept or assigned, but new independent places are deferred.
     for (const l of world.locations) {
       if (
@@ -497,7 +570,17 @@ export const publishWorld = onCall(async (request) => {
     const updatedCharacters: Character[] = [];
     for (const doc of characters.docs) {
       const c = doc.data() as Character;
-      const updated = characterAfterWorldChange(c, world, geometryChanged);
+      const aligned = alignment ? { ...c, ...transformPoint(c, alignment) } : c;
+      if (!pointOnMap(aligned, world))
+        throw new HttpsError(
+          "failed-precondition",
+          "A character is outside the new map. Choose Fit existing world or move characters out of the old padding first.",
+        );
+      const updated = characterAfterWorldChange(
+        aligned,
+        world,
+        geometryChanged,
+      );
       if (!Number.isFinite(entryCost(tileAt(hexAt(updated, world), world))))
         throw new HttpsError(
           "failed-precondition",

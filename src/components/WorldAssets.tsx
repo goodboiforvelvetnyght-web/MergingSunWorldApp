@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { uploadLargeMap, type UploadProgress } from "../mapUpload";
+import type { MapArtwork } from "../../shared/mapImages";
 import { call, friendlyError } from "../useWorld";
 import { emblemUrl, mapPreviewUrl } from "../../shared/assets";
 export function WorldAssetUpload({
@@ -10,12 +12,17 @@ export function WorldAssetUpload({
 }: {
   kind: "map" | "emblem";
   value?: string | null;
-  onChange: (id: string | null, nativeZoom?: number) => void;
+  onChange: (
+    id: string | null,
+    nativeZoom?: number,
+    artwork?: MapArtwork,
+  ) => void;
   demo?: boolean;
   onBusyChange?: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [progress, setProgress] = useState<UploadProgress | null>(null);
   const active = useRef(true),
     latestChange = useRef(onChange);
   latestChange.current = onChange;
@@ -53,7 +60,16 @@ export function WorldAssetUpload({
             if (!file) return;
             setError("");
             setBusy(true);
+            setProgress(null);
             try {
+              if (kind === "map") {
+                const artwork = await uploadLargeMap(file, (value) => {
+                  if (active.current) setProgress(value);
+                });
+                if (active.current)
+                  latestChange.current(artwork.id, artwork.nativeZoom, artwork);
+                return;
+              }
               if (file.size > 6 * 1024 * 1024)
                 throw new Error("Choose an image up to 6 MB.");
               if (
@@ -92,11 +108,30 @@ export function WorldAssetUpload({
         />
       </label>
       {busy && (
-        <p role="status">
-          {kind === "map"
-            ? "Uploading artwork and preparing map tiles… Large maps may take several minutes. Keep this page open."
-            : "Preparing emblem…"}
-        </p>
+        <div role="status">
+          <p>
+            {kind === "map"
+              ? (progress?.detail ?? "Checking map file…")
+              : "Preparing emblem…"}
+          </p>
+          {kind === "map" && (
+            <>
+              <progress
+                aria-label={
+                  progress?.stage === "processing"
+                    ? "Map processing progress"
+                    : "Map upload progress"
+                }
+                value={progress?.percent ?? 0}
+                max={100}
+              />
+              <p className="fine-print">
+                Large maps may take several minutes. Keep this page open.
+                Selecting the same file again resumes an interrupted upload.
+              </p>
+            </>
+          )}
+        </div>
       )}
       {error && (
         <p className="error" role="alert">
@@ -108,7 +143,7 @@ export function WorldAssetUpload({
       )}
       <p className="fine-print">
         {kind === "map"
-          ? "PNG, JPEG, or WebP, up to 6 MB. Artwork fits the 4:3 world with padding as needed. Preview it on the draft map, then Publish world. Artwork changes keep character positions and terrain rules."
+          ? "PNG, JPEG, or WebP, up to 25 MB, 8192 pixels on the longest side, and 64 megapixels. Natural proportions are preserved. The original stays private. Review alignment and preview the draft before publishing."
           : "PNG, JPEG, or WebP, up to 6 MB. Transparent backgrounds and flag proportions are preserved. Changes appear after publishing the world."}
       </p>
       {value && (

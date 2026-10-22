@@ -8,6 +8,7 @@ export default function LocationForm({
   location,
   scope,
   kingdoms,
+  mapSize = { width: 2400, height: 1800 },
   onClose,
   onSave,
   onDelete,
@@ -15,6 +16,7 @@ export default function LocationForm({
   location: Location;
   scope: string;
   kingdoms: Kingdom[];
+  mapSize?: { width: number; height: number };
   onClose: () => void;
   onSave: (l: Location) => void;
   onDelete: () => void;
@@ -117,7 +119,7 @@ export default function LocationForm({
               type="number"
               required
               min={0}
-              max={2400}
+              max={mapSize.width}
               step="any"
               value={value.x}
               onChange={(e) => field("x", Number(e.target.value))}
@@ -129,7 +131,7 @@ export default function LocationForm({
               type="number"
               required
               min={0}
-              max={1800}
+              max={mapSize.height}
               step="any"
               value={value.y}
               onChange={(e) => field("y", Number(e.target.value))}
