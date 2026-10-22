@@ -631,6 +631,14 @@ try {
         (e) => e.code === "functions/failed-precondition",
       );
       generation = data.requestId;
+      await assert.rejects(
+        player.call("createCharacter", {
+          ...data,
+          requestId: before.incarnationId,
+          expectedGeneration: generation,
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
       const stranger = client("stranger-after-recreation");
       await createUserWithEmailAndPassword(
         stranger.auth,

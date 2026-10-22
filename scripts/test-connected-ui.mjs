@@ -106,6 +106,7 @@ try {
   await page
     .getByRole("link", { name: "Enter the world", exact: true })
     .click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).waitFor();
   await page.getByRole("button", { name: "World editor", exact: true }).click();
   await page
     .locator("summary")
@@ -139,6 +140,7 @@ try {
   await guest
     .getByRole("link", { name: "Enter the world", exact: true })
     .click();
+  await guest.getByRole("button", { name: "Sign out", exact: true }).waitFor();
   await guest
     .getByRole("button", { name: "My character", exact: true })
     .click();

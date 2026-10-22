@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -217,7 +218,7 @@ export default function App() {
     }, 500);
     return () => clearTimeout(timer);
   }, [draft, cloud.user, notice]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     setTab("atlas");
     setDraft(null);
     setSelected(null);
@@ -608,6 +609,13 @@ export default function App() {
     );
   }
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(published);
+  if (!cloud.authReady)
+    return (
+      <main className="creation-loading" role="status">
+        <Sun size={36} />
+        <p>Opening the atlas…</p>
+      </main>
+    );
   if (window.location.pathname.replace(/\/$/, "") === "/admin/activate")
     return (
       <>

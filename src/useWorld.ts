@@ -20,6 +20,7 @@ import {
 } from "../shared/world";
 export function useCloud() {
   const [user, setUser] = useState<User | null>(null),
+    [authReady, setAuthReady] = useState(false),
     [claimAdmin, setClaimAdmin] = useState(false),
     [roleAdmin, setRoleAdmin] = useState(false),
     [world, setWorld] = useState<World>(DEFAULT_WORLD),
@@ -32,6 +33,7 @@ export function useCloud() {
     () =>
       onAuthStateChanged(auth, (u) => {
         setUser(u);
+        setAuthReady(true);
         setCharacter(null);
         setJourneys([]);
         setRoleAdmin(false);
@@ -100,7 +102,7 @@ export function useCloud() {
     );
   }, [user?.uid, generation]);
   const admin = claimAdmin || roleAdmin;
-  return { user, admin, world, character, journeys, status };
+  return { user, authReady, admin, world, character, journeys, status };
 }
 export async function call<T>(name: string, data: unknown): Promise<T> {
   const result = await httpsCallable<unknown, T>(functions, name)(data);

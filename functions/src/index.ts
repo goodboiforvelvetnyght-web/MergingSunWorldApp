@@ -119,6 +119,16 @@ export const createCharacter = onCall(async (request) => {
         "failed-precondition",
         "Your character changed. Reload before recreating it.",
       );
+    if (previous) {
+      const archived = await tx.get(
+        ref.collection("incarnations").doc(requestId),
+      );
+      if (archived.exists)
+        throw new HttpsError(
+          "failed-precondition",
+          "This creation request belongs to an older character. Start a fresh character draft.",
+        );
+    }
     const w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
     const location = w.locations.find(
       (l) =>
