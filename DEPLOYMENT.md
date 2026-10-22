@@ -37,17 +37,17 @@ The app's signed-out view is a local demo. Sign in to test the connected world. 
 
 If Firebase reports `auth/unauthorized-domain`, add the published hostname in **Authentication → Settings → Authorized domains**.
 
-## 5. Give your account the admin role
+## 5. Activate your admin account
 
-Create your account on the live app, then copy its UID from **Firebase Console → Authentication → Users**. A UID is an identifier, not a password.
+Visit https://mergingsunapp-2.web.app/admin/activate, sign in with your existing account, and enter your private activation key. The first account's key is bound to its UID and is delivered privately; it is never part of this repository. Admin access appears immediately after successful redemption.
 
-The included admin helper uses Google Application Default Credentials, which are separate from Firebase CLI login. On an authorized computer with the Google Cloud CLI installed:
+Existing admins can open **World Editor → Admin invitations → Generate admin invitation**. Share the displayed key privately with the recipient and the activation-page URL. In-app keys can be redeemed by any signed-in account, once, within 24 hours. An unused invitation can be revoked from the same panel.
+
+If there is no usable admin or key, a project owner can generate a recovery invitation using Google Application Default Credentials:
 
 ```bash
 gcloud auth application-default login
-npm --prefix functions run set-admin -- YOUR_FIREBASE_AUTH_UID
+npm --prefix functions run invite-admin -- YOUR_FIREBASE_AUTH_UID
 ```
 
-Sign out of the app and sign back in. The World Editor will be available to your account. Do not hardcode admin passwords or add admin credentials to the browser configuration.
-
-If a command fails, share its error text with credentials and tokens removed. The app has no custom domain requirement; the Firebase-provided Hosting address is sufficient for the first release.
+Do not send Google passwords, login codes, private keys, or service-account files through chat. Firebase Storage does not need to be enabled for this release's small character portraits.

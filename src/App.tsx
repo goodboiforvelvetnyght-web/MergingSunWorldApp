@@ -58,7 +58,8 @@ import {
 import { AuthModal } from "./components/AuthModal";
 import { Modal } from "./components/Modal";
 import { PlacesEditor } from "./components/PlacesEditor";
-import { CharacterForm } from "./components/Forms";
+import { AdminActivation, AdminInvitations } from "./components/AdminAccess";
+const CharacterCreation = lazy(() => import("./components/CharacterCreation"));
 const LocationForm = lazy(() => import("./components/LocationForm"));
 import {
   useCloud,
@@ -72,6 +73,8 @@ import {
   DEFAULT_WORLD,
   normalizeWorld,
   characterAfterWorldChange,
+  characterGeneration,
+  type CharacterCreationData,
   MAX_ENERGY,
   REGEN_MS,
   KM_PER_HEX,
@@ -221,6 +224,7 @@ export default function App() {
     setPast([]);
     setFuture([]);
     setTravelConfirm(false);
+    setCharacterOpen(false);
     setEditLocation(null);
     setKingdomEdit(null);
     setTool("pan");
@@ -344,7 +348,9 @@ export default function App() {
             ...t,
             ...(tool === "terrain"
               ? { terrain: paintTerrain }
-              : { river: tool === "river" }),
+              : tool === "road" || tool === "erase-road"
+                ? { road: tool === "road" }
+                : { river: tool === "river" }),
           };
         }
         return { ...current, tiles };
@@ -436,31 +442,33 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function create(data: {
-    name: string;
-    title: string;
-    bio: string;
-    locationId: string;
-  }) {
+  async function create(data: CharacterCreationData) {
     try {
       if (isDemo) {
-        const l = world.locations.find((l) => l.id === data.locationId)!;
-        if (tileAt(hexAt(l, world), world).terrain === "water")
-          throw new Error("Choose a walkable starting settlement.");
-        const c = makeCharacter(
-          data.name.trim(),
-          data.title.trim(),
-          data.bio.trim(),
-          l,
-          world,
+        const l = published.locations.find(
+          (l) => l.id === data.locationId && l.starting && l.kingdomId,
         );
-        setDemoCharacter(c);
+        if (!l || tileAt(hexAt(l, published), published).terrain === "water")
+          throw new Error("Choose a walkable starting settlement.");
+        if (
+          demoCharacter &&
+          data.expectedGeneration !== characterGeneration(demoCharacter)
+        )
+          throw new Error("Your character changed. Reopen character creation.");
+        setDemoCharacter({
+          ...makeCharacter(data.name, data.title, data.bio, l, published),
+          realName: data.realName,
+          portrait: data.portrait,
+          incarnationId: data.requestId,
+          currentLocationId: l.id,
+          internalLocationId: null,
+        });
         setDemoJourneys([]);
-        mapRef.current?.focus(c);
-      } else {
-        const c = await call<Character>("createCharacter", data);
-        mapRef.current?.focus(c);
-      }
+      } else await call<Character>("createCharacter", data);
+      closeDetails();
+      setTab("character");
+      setMobileOpen(true);
+      travelRequest.current = null;
       notice("Your story has a place in the world.");
     } catch (e) {
       throw new Error(friendlyError(e));
@@ -501,12 +509,13 @@ export default function App() {
           ].slice(0, 20),
         );
       } else {
-        const fingerprint = `${key(destination)}:${published.version}:${character.x}:${character.y}:${character.energy}`;
+        const fingerprint = `${characterGeneration(character)}:${key(destination)}:${published.version}:${character.x}:${character.y}:${character.energy}`;
         if (travelRequest.current?.fingerprint !== fingerprint)
           travelRequest.current = { fingerprint, id: crypto.randomUUID() };
         await call("travel", {
           destination: pos,
           worldVersion: published.version,
+          generation: characterGeneration(character),
           requestId: travelRequest.current.id,
         });
         travelRequest.current = null;
@@ -599,6 +608,37 @@ export default function App() {
     );
   }
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(published);
+  if (window.location.pathname.replace(/\/$/, "") === "/admin/activate")
+    return (
+      <>
+        <AdminActivation
+          user={cloud.user}
+          admin={cloud.admin}
+          onSignIn={() => setAuthOpen(true)}
+        />
+        {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
+      </>
+    );
+  if (characterOpen)
+    return (
+      <Suspense
+        fallback={
+          <main className="creation-loading">
+            <Sun size={36} />
+            <p>Opening your story…</p>
+          </main>
+        }
+      >
+        <CharacterCreation
+          world={published}
+          demo={isDemo}
+          scope={cloud.user?.uid ?? "demo"}
+          existing={character}
+          onClose={() => setCharacterOpen(false)}
+          onSave={create}
+        />
+      </Suspense>
+    );
   return (
     <div className="app-shell">
       <nav className="rail" aria-label="Main navigation">
@@ -856,7 +896,14 @@ export default function App() {
                 <>
                   <div className="character-profile">
                     <div className="portrait large">
-                      <Sun size={40} strokeWidth={1} />
+                      {character.portrait ? (
+                        <img
+                          src={character.portrait}
+                          alt={`${character.name} portrait`}
+                        />
+                      ) : (
+                        <Sun size={40} strokeWidth={1} />
+                      )}
                     </div>
                     <h2>{character.name}</h2>
                     <span>{character.title || "Traveler of the Reach"}</span>
@@ -869,6 +916,12 @@ export default function App() {
                     <p>
                       {character.bio || "Your story is still being written."}
                     </p>
+                    {character.realName && (
+                      <p className="private-name">
+                        Player: {character.realName}
+                        <small>Only you and admins can read this name.</small>
+                      </p>
+                    )}
                     <button
                       className="button secondary"
                       onClick={() => {
@@ -935,13 +988,18 @@ export default function App() {
                       <span>Choose a place on the map to begin.</span>
                     </div>
                   )}
-                  {isDemo && (
-                    <button
-                      className="button secondary full"
-                      onClick={() => setCharacterOpen(true)}
-                    >
-                      Create your own demo character
-                    </button>
+                  <button
+                    className="button secondary full"
+                    onClick={() => setCharacterOpen(true)}
+                  >
+                    {isDemo
+                      ? "Create your own demo character"
+                      : "Recreate character"}
+                  </button>
+                  {!isDemo && !cloud.admin && (
+                    <a className="text-button" href="/admin/activate">
+                      Activate admin access
+                    </a>
                   )}
                 </>
               ) : (
@@ -1069,6 +1127,8 @@ export default function App() {
                         { id: "pan", label: "Navigate", icon: MousePointer2 },
                         { id: "terrain", label: "Terrain", icon: Brush },
                         { id: "river", label: "Add river", icon: Waves },
+                        { id: "road", label: "Add road", icon: Footprints },
+                        { id: "erase-road", label: "Erase road", icon: Minus },
                         {
                           id: "erase-river",
                           label: "Erase river",
@@ -1119,7 +1179,13 @@ export default function App() {
                       </div>
                     </>
                   )}
-                  {["terrain", "river", "erase-river"].includes(tool) && (
+                  {[
+                    "terrain",
+                    "river",
+                    "erase-river",
+                    "road",
+                    "erase-road",
+                  ].includes(tool) && (
                     <>
                       <label className="field-label">BRUSH SIZE</label>
                       <div className="segmented">
@@ -1140,7 +1206,11 @@ export default function App() {
                             ? "Paint by clicking or dragging across hexes. Water blocks walking."
                             : tool === "river"
                               ? "Add +3 energy whenever a traveler enters a river tile."
-                              : "Remove the river modifier without changing base terrain."}
+                              : tool === "road"
+                                ? "Roads halve terrain costs. River surcharges stay the same. Paint by clicking or dragging."
+                                : tool === "erase-road"
+                                  ? "Remove roads without changing terrain or rivers."
+                                  : "Remove the river modifier without changing base terrain."}
                         </span>
                       </div>
                     </>
@@ -1241,6 +1311,7 @@ export default function App() {
                   )}
                 </>
               )}
+              {!isDemo && cloud.admin && <AdminInvitations />}
               <div className="editor-actions">
                 <button
                   className="button primary full"
@@ -1438,9 +1509,13 @@ export default function App() {
                   ? "Adding river modifiers"
                   : tool === "erase-river"
                     ? "Erasing river modifiers"
-                    : tool === "location"
-                      ? "Click to place a settlement"
-                      : "Click to draw the kingdom border"}
+                    : tool === "road"
+                      ? "Adding roads"
+                      : tool === "erase-road"
+                        ? "Erasing roads"
+                        : tool === "location"
+                          ? "Click to place a settlement"
+                          : "Click to draw the kingdom border"}
               <button
                 onClick={() => setTool("pan")}
                 aria-label="Stop editing tool"
@@ -1724,9 +1799,22 @@ export default function App() {
                             <strong>{route.riverEntries * RIVER_COST}</strong>
                           </div>
                         )}
+                        {route.roadSavings > 0 && (
+                          <p>
+                            Terrain totals include a 50% road discount, saving{" "}
+                            {route.roadSavings} energy.
+                          </p>
+                        )}
+                        {route.rounding > 0 && (
+                          <div>
+                            <span>Round journey total up</span>
+                            <strong>+{route.rounding}</strong>
+                          </div>
+                        )}
                         <p>
-                          The starting hex is free. Each entered hex adds its
-                          terrain cost and any river surcharge.
+                          The starting hex is free. Roads halve terrain cost.
+                          River surcharges are added in full; the final journey
+                          total is rounded up.
                         </p>
                       </details>
                       {route.cost > energy && (
@@ -1813,14 +1901,6 @@ export default function App() {
         </Modal>
       )}
       {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
-      {characterOpen && (
-        <CharacterForm
-          world={published}
-          demo={isDemo}
-          onClose={() => setCharacterOpen(false)}
-          onSave={create}
-        />
-      )}
       {editLocation && draft && (
         <Suspense
           fallback={
@@ -1968,9 +2048,10 @@ export default function App() {
             </p>
             <h3>Travel rules</h3>
             <p>
-              Walking costs 2 energy for plains, 4 for forest, and 7 for
-              mountains. A river modifier adds 3 on entry. Water blocks walking.
-              Each hex step represents about 5 km.
+              Roads halve terrain costs. Walking normally costs 2 energy for
+              plains, 4 for forest, and 7 for mountains. A river modifier adds 3
+              on entry. Water blocks walking. Each hex step represents about 5
+              km.
             </p>
             <p>
               Energy regenerates by 1 every 5 minutes, to a maximum of 100.

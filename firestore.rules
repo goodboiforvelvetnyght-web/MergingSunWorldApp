@@ -2,16 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
-    function admin() { return signedIn() && request.auth.token.admin == true; }
+    function admin() {
+      return signedIn() && (request.auth.token.get('admin', false) == true ||
+        (exists(/databases/$(database)/documents/adminRoles/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/adminRoles/$(request.auth.uid)).data.role == 'admin'));
+    }
+    function ownerOrAdmin(uid) { return signedIn() && (request.auth.uid == uid || admin()); }
     match /worlds/main { allow read: if true; allow write: if false; }
+    // Character records include real names and portraits: only the owner and admins may read them.
     match /characters/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || admin());
+      allow read: if ownerOrAdmin(uid);
       allow write: if false;
-      match /journeys/{journey} {
-        allow read: if signedIn() && (request.auth.uid == uid || admin());
+      match /journeys/{journey} { allow read: if ownerOrAdmin(uid); allow write: if false; }
+      match /incarnations/{generation} {
+        allow read: if ownerOrAdmin(uid);
         allow write: if false;
+        match /journeys/{journey} { allow read: if ownerOrAdmin(uid); allow write: if false; }
       }
     }
+    match /adminRoles/{uid} { allow read: if ownerOrAdmin(uid); allow write: if false; }
+    match /adminInvitations/{invitation} { allow read: if admin(); allow write: if false; }
     match /worldBackups/{version} { allow read: if admin(); allow write: if false; }
     match /{document=**} { allow read, write: if false; }
   }

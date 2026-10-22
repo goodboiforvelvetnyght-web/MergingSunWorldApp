@@ -53,7 +53,7 @@ A successful run reports the actual deployment result and checks the Hosting pag
 
 For the first release, also sign in on the live website, create a character, and complete a journey. GitHub's public smoke check deliberately creates no real users and changes no world data.
 
-Admin account setup is separate. See [DEPLOYMENT.md](DEPLOYMENT.md#5-give-your-account-the-admin-role); the deployment identity deliberately cannot grant user admin claims. We can add a separate, appropriately authorized admin workflow later if desired.
+Admin activation uses [the activation page and invitation flow](DEPLOYMENT.md#5-activate-your-admin-account). The runtime grants application roles through server-controlled Firestore documents; neither it nor the deployment identity needs Firebase Authentication administration permissions. Only the hash of the UID-bound initial key is deployed. Keys generated in the editor are single-use, expire in 24 hours, and can be redeemed by any signed-in account.
 
 ## Troubleshooting
 

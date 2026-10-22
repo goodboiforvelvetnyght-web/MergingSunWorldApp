@@ -2569,3 +2569,490 @@ input[type="range"] {
 .filter-tabs {
   flex-wrap: wrap;
 }
+
+/* A focused, full-page character creation story. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.creation-flow {
+  min-height: 100dvh;
+  background: #f7f4ea;
+  color: #243e35;
+  display: flex;
+  flex-direction: column;
+}
+.creation-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 22px 5vw;
+  border-bottom: 1px solid #ddd8c7;
+}
+.creation-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: "Libre Caslon Display", serif;
+  letter-spacing: 3px;
+  font-size: 21px;
+}
+.creation-progress {
+  margin-left: auto;
+  color: #79816b;
+  font-size: 13px;
+}
+.creation-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.creation-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 42px 5vw 30px;
+  animation: story-arrives 0.35s ease-out;
+}
+.creation-intro {
+  text-align: center;
+  margin-bottom: 34px;
+  width: 100%;
+}
+.creation-intro h1 {
+  font:
+    400 clamp(38px, 5vw, 72px)/1.12 "Libre Caslon Display",
+    serif;
+  margin: 14px 0 0;
+  outline: none;
+}
+.creation-centered {
+  margin: auto;
+  width: min(650px, 100%);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 22px;
+  padding: 30px 0 60px;
+}
+.creation-centered p {
+  color: #737e69;
+  line-height: 1.7;
+  max-width: 500px;
+}
+.dramatic-name {
+  width: 100%;
+  font:
+    400 clamp(24px, 4vw, 48px)/1.3 "Libre Caslon Display",
+    serif;
+  border: 0;
+  border-bottom: 2px solid #aaa78c;
+  border-radius: 0;
+  padding: 18px 10px;
+  background: transparent;
+  text-align: center;
+  color: #243e35;
+}
+.dramatic-name:focus {
+  outline: none;
+  border-bottom-color: #a77845;
+  box-shadow: 0 2px 0 #a77845;
+}
+.creation-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #f7f4eaf5;
+  border-top: 1px solid #ddd8c7;
+  padding: 18px 5vw;
+  z-index: 10;
+}
+.creation-footer > .button {
+  min-width: 135px;
+}
+.creation-draft-note {
+  font-size: 11px;
+  color: #79816b;
+  text-align: center;
+}
+.creation-writing {
+  width: min(720px, 100%);
+  display: grid;
+  gap: 14px;
+  margin: 0 auto;
+}
+.creation-writing p {
+  color: #79816b;
+  line-height: 1.6;
+}
+.creation-writing label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.creation-writing textarea {
+  min-height: 230px;
+  line-height: 1.7;
+  padding: 18px;
+  resize: vertical;
+}
+.creation-writing input {
+  padding: 12px;
+}
+.creation-writing > small {
+  text-align: right;
+  color: #79816b;
+}
+.creation-map-step .creation-stage {
+  padding-top: 25px;
+}
+.creation-map-step .creation-intro {
+  margin-bottom: 25px;
+}
+.creation-map-step .creation-intro h1 {
+  font-size: clamp(32px, 3.5vw, 50px);
+}
+.creation-map-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(310px, 1fr);
+  gap: 24px;
+  width: 100%;
+  max-width: 1500px;
+  align-items: start;
+}
+.creation-map {
+  height: clamp(380px, 62dvh, 720px);
+  position: relative;
+  border: 1px solid #d7d5c4;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #a6c0ba;
+}
+.creation-map-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 500;
+  display: flex;
+  box-shadow: 0 3px 10px #243e3520;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.creation-map-controls button {
+  background: #faf8ef;
+  border: 0;
+  padding: 11px;
+  color: #243e35;
+  display: grid;
+  place-items: center;
+}
+.creation-lore {
+  max-height: 62dvh;
+  overflow-y: auto;
+  padding: 5px 12px 20px 0;
+}
+.creation-lore > p {
+  line-height: 1.7;
+  color: #6c7865;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.creation-lore h2 {
+  font:
+    36px "Libre Caslon Display",
+    serif;
+  margin: 24px 0 12px;
+}
+.creation-choice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.creation-choice {
+  padding: 11px 13px;
+  background: #fcfaf3;
+  color: #344c3f;
+  border: 1px solid #d7d5c4;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12px;
+}
+.creation-choice.selected {
+  border-color: #9b713c;
+  background: #eae4d2;
+  box-shadow: inset 0 0 0 1px #9b713c;
+}
+.creation-choice > span {
+  display: inline-block;
+  height: 9px;
+  width: 9px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+.creation-choice small {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #74816b;
+}
+.creation-entry-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+.creation-entry-list .text-button {
+  text-align: left;
+}
+.creation-entry {
+  border-top: 1px solid #ddd8c7;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+.creation-portrait {
+  height: 180px;
+  width: 180px;
+  background: #e9e5d5;
+  border: 1px solid #c5b88e;
+  color: #a17b3d;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+}
+.creation-portrait img,
+.portrait img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+.portrait-upload {
+  display: grid;
+  gap: 12px;
+  font-size: 14px;
+}
+.portrait-upload input {
+  width: min(300px, 100%);
+  padding: 10px;
+}
+.creation-review {
+  width: min(700px, 100%);
+  text-align: center;
+  display: grid;
+  gap: 17px;
+}
+.creation-review h2 {
+  font:
+    52px "Libre Caslon Display",
+    serif;
+  overflow-wrap: anywhere;
+}
+.creation-review p {
+  line-height: 1.7;
+}
+.creation-backstory {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.private-name {
+  font-size: 12px;
+  color: #75816d;
+}
+.private-name small {
+  display: block;
+  margin-top: 5px;
+}
+.replacement-confirm {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  background: #eee5d5;
+  padding: 18px;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.replacement-confirm input {
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.creation-error {
+  position: sticky;
+  bottom: 82px;
+  padding: 14px 5vw;
+  background: #f6e6df;
+  color: #943f2f;
+  border-top: 1px solid #d3ac9c;
+  z-index: 11;
+}
+.creation-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: 20px;
+  text-align: center;
+  background: #f7f4ea;
+  color: #243e35;
+}
+@keyframes story-arrives {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .creation-stage {
+    animation: none;
+  }
+}
+@media (max-width: 760px) {
+  .creation-header {
+    padding: 16px 20px;
+    gap: 10px;
+  }
+  .creation-brand {
+    font-size: 17px;
+    letter-spacing: 2px;
+  }
+  .creation-stage {
+    padding: 30px 20px;
+  }
+  .creation-centered {
+    padding: 30px 0;
+  }
+  .creation-map-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .creation-map {
+    height: 330px;
+  }
+  .creation-lore {
+    max-height: none;
+    padding-right: 0;
+  }
+  .creation-footer {
+    flex-wrap: wrap;
+    padding: 14px 20px;
+    gap: 10px;
+  }
+  .creation-draft-note {
+    order: 3;
+    width: 100%;
+  }
+  .creation-footer > .button {
+    min-width: 115px;
+  }
+  .creation-intro h1 {
+    font-size: 40px;
+  }
+  .creation-review h2 {
+    font-size: 42px;
+  }
+  .creation-error {
+    bottom: 100px;
+  }
+}
+/* Private admin invitation and activation screens. */
+.admin-invitations {
+  margin: 24px 0;
+  border-top: 1px solid #ddd8c7;
+  padding-top: 14px;
+}
+.admin-invitations summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.admin-invitations[open] summary {
+  margin-bottom: 16px;
+}
+.issued-invitation {
+  padding: 14px;
+  border: 1px solid #c9bc97;
+  border-radius: 7px;
+  background: #f4eedc;
+  font-size: 12px;
+  display: grid;
+  gap: 12px;
+}
+.issued-invitation code,
+.issued-invitation a {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  user-select: all;
+}
+.invitation-list > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #ddd8c7;
+  padding: 12px 0;
+  font-size: 11px;
+}
+.invitation-list small {
+  display: block;
+  margin-top: 4px;
+  color: #75816d;
+}
+.admin-activation {
+  min-height: 100dvh;
+  background: #f7f4ea;
+  color: #243e35;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  gap: 30px;
+}
+.activation-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #243e35;
+  letter-spacing: 3px;
+  font:
+    23px "Libre Caslon Display",
+    serif;
+  text-decoration: none;
+}
+.activation-card {
+  width: min(500px, 100%);
+  padding: clamp(24px, 5vw, 45px);
+  display: grid;
+  gap: 20px;
+  border: 1px solid #ddd5bd;
+  border-radius: 12px;
+  background: #fdfaf2;
+}
+.activation-card h1 {
+  font:
+    48px "Libre Caslon Display",
+    serif;
+}
+.activation-card p {
+  line-height: 1.7;
+  font-size: 13px;
+}

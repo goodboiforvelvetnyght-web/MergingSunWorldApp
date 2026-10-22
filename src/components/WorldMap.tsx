@@ -3,6 +3,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   allHexes,
+  neighbors,
   inBounds,
   center,
   corners,
@@ -22,11 +23,22 @@ export type MapHandle = {
   zoom: (delta: number) => void;
   home: () => void;
   focus: (p: Point) => void;
+  focusBounds: (points: Point[]) => void;
 };
 export type EditorTool =
-  "pan" | "terrain" | "river" | "erase-river" | "location" | "border";
+  | "pan"
+  | "terrain"
+  | "river"
+  | "erase-river"
+  | "road"
+  | "erase-road"
+  | "location"
+  | "border";
 type Props = {
   world: World;
+  onKingdom?: (id: string) => void;
+  selectedKingdomId?: string;
+  fitWholeWorld?: boolean;
   character: Character | null;
   selected: Hex | null;
   route: Route | null;
@@ -88,10 +100,11 @@ export function WorldMap(props: Props) {
     }).addTo(m);
     m.setMaxBounds(bounds.pad(0.22));
     m.fitBounds(bounds, { padding: [20, 20] });
-    if (container.current!.clientWidth < 600)
+    if (container.current!.clientWidth < 600 && !props.fitWholeWorld)
       m.setView(ll(props.character ?? { x: 1200, y: 900 }), 1.75);
     for (const name of [
       "territories",
+      "roads",
       "grid",
       "route",
       "locations",
@@ -109,7 +122,9 @@ export function WorldMap(props: Props) {
     const element = container.current!;
     const isBrush = () =>
       latest.current.editor &&
-      ["terrain", "river", "erase-river"].includes(latest.current.tool);
+      ["terrain", "river", "erase-river", "road", "erase-road"].includes(
+        latest.current.tool,
+      );
     const paintPointer = (e: PointerEvent) => {
       const p = latest.current,
         latlng = m.mouseEventToLatLng(e);
@@ -158,7 +173,12 @@ export function WorldMap(props: Props) {
           p.onBorder(point);
           return;
         }
-        if (["terrain", "river", "erase-river"].includes(p.tool)) return;
+        if (
+          ["terrain", "river", "erase-river", "road", "erase-road"].includes(
+            p.tool,
+          )
+        )
+          return;
       }
       p.onSelect(hexAt(point, p.world));
     });
@@ -169,6 +189,13 @@ export function WorldMap(props: Props) {
       home: () => m.fitBounds(bounds, { padding: [20, 20] }),
       focus: (p) =>
         m.flyTo(ll(p), Math.max(m.getZoom(), 2.1), { duration: 0.6 }),
+      focusBounds: (points) => {
+        if (points.length)
+          m.fitBounds(L.latLngBounds(points.map(ll)), {
+            padding: [25, 25],
+            maxZoom: 2.5,
+          });
+      },
     });
     return () => {
       ro.disconnect();
@@ -232,13 +259,65 @@ export function WorldMap(props: Props) {
       for (const t of props.world.territories)
         L.polygon(t.points.map(ll), {
           color: t.color,
-          weight: 2,
+          weight: t.id === props.selectedKingdomId ? 4 : 2,
           dashArray: "7 6",
           fillColor: t.color,
-          fillOpacity: 0.07,
-          interactive: false,
-        }).addTo(layer);
-  }, [props.world.territories, props.borders, props.editor]);
+          fillOpacity:
+            t.id === props.selectedKingdomId
+              ? 0.28
+              : props.onKingdom
+                ? 0.15
+                : 0.07,
+          interactive: !!props.onKingdom,
+          bubblingMouseEvents: false,
+        })
+          .on("click", () => latest.current.onKingdom?.(t.id))
+          .bindTooltip(esc(t.name))
+          .addTo(layer);
+  }, [
+    props.world.territories,
+    props.borders,
+    props.editor,
+    props.onKingdom,
+    props.selectedKingdomId,
+  ]);
+  useEffect(() => {
+    const layer = layers.current.roads;
+    if (!layer) return;
+    layer.clearLayers();
+    const segments: L.LatLng[][] = [];
+    for (const [id, tile] of Object.entries(props.world.tiles)) {
+      if (!tile.road || tile.terrain === "water") continue;
+      const [q, r] = id.split(",").map(Number),
+        h = { q, r },
+        p = center(h, props.world);
+      if (!inBounds(h, props.world)) continue;
+      const links = neighbors(h).filter(
+        (n) =>
+          inBounds(n, props.world) &&
+          tileAt(n, props.world).road &&
+          tileAt(n, props.world).terrain !== "water",
+      );
+      if (!links.length)
+        segments.push([ll({ x: p.x - 9, y: p.y }), ll({ x: p.x + 9, y: p.y })]);
+      for (const n of links)
+        if (key(n) > id) segments.push([ll(p), ll(center(n, props.world))]);
+    }
+    // Batch the graph into two canvas paths so a large road network stays cheap to render.
+    if (segments.length) {
+      L.polyline(segments, {
+        color: "#684e32",
+        weight: 5,
+        opacity: 0.8,
+        interactive: false,
+      }).addTo(layer);
+      L.polyline(segments, {
+        color: "#e8d4aa",
+        weight: 2,
+        interactive: false,
+      }).addTo(layer);
+    }
+  }, [props.world]);
   useEffect(() => {
     const layer = layers.current.locations;
     if (!layer) return;

@@ -23,7 +23,8 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Pan, wheel and pinch zoom, map tiles, zoom controls, fit world, and find character.
 - Searchable cities, towns, and landmarks. Filter by type, open lore, and share a location URL.
 - Hex-grid, terrain, territory, and place-label overlays.
-- One character per account, with name, title, biography, and original starting settlement.
+- Full-page character creation: name → kingdom map and lore → home city and lore → backstory → optional portrait → private real name → review. Home is both birthplace and starting position.
+- Confirmed character recreation starts a new story with 100 energy and a separate journey history. The old profile is archived privately only after successful confirmation.
 - Walking route previews with an energy breakdown, immediate travel, and recent journey history.
 - **Landscape** editor with terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
 - Location placement, position editing, rich-text lore, headings, lists, quotes, HTTPS images, and links. Lore is sanitized before display.
@@ -31,7 +32,7 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Kingdom borders are part of the kingdom. Edit coordinates or draw a replacement; borders cannot be deleted separately. No settlement/border containment calculation is performed.
 - Confirmed kingdom deletion removes its border, settlements, and their internal entries. Settlement deletion removes its entries. Characters stay in place and references to deleted places are cleared.
 - Locally autosaved world and lore drafts; explicit world publication; world JSON export. The local preview can restore its previous saved world into a draft. Connected world publication keeps server-side version backups.
-- Firebase email/password sign-up, sign-in, password reset, and server-assigned admin roles.
+- Firebase email/password sign-up, sign-in, password reset, and server-managed admin roles with expiring, single-use invitations.
 - Responsive desktop and phone layouts, keyboard-accessible controls, and a `/` shortcut for search.
 
 ## Places and existing world data
@@ -53,11 +54,12 @@ These are starter balancing values, defined in `shared/world.ts`:
 | Walking into plains    | 2 energy                 |
 | Walking into forest    | 4 energy                 |
 | Walking into mountains | 7 energy                 |
+| Road modifier          | 50% of terrain cost      |
 | River modifier         | +3 energy on every entry |
 | Water                  | Impassable on foot       |
 | Approximate distance   | 5 km per hex step        |
 
-Routes minimize energy expenditure. The starting tile is free. Rivers are tile modifiers, with no directional crossing or spline mechanics. A route's distance counts its steps, including detours. Regeneration is calculated from timestamps on demand, without recurring server jobs. Travel costs and positions are calculated independently on the backend; a browser-provided cost is never trusted.
+Routes minimize energy expenditure using a minimum cost of 1 per step. Roads halve only terrain cost (plains 1, forest 2, mountains 3.5); river surcharges are added in full. Fractions are kept during pathfinding and the final journey total is rounded up once. The starting tile is free. Rivers are tile modifiers, with no directional crossing or spline mechanics. A route's distance counts its steps, including detours. Regeneration is calculated from timestamps on demand, without recurring server jobs. Travel costs and positions are calculated independently on the backend; a browser-provided cost is never trusted.
 
 **Changing grid size or alignment returns characters with a surviving origin to that settlement, without changing energy. Characters whose origin was deleted keep their map position.** The editor explicitly confirms grid changes. Terrain painting transfers by nearest old tile center and should be reviewed. Changing grid visibility does not reset anyone. Deleting a place never moves its characters. Display names and allegiance can change without changing a settlement ID.
 
@@ -84,21 +86,27 @@ npm run deploy
 
 Deployment changes the live project. Review the rules and backend before running that command. Cloud Functions deployment requires the Blaze billing plan. The backend now uses the dedicated `merging-sun-runtime` service account created by the Google setup script. Manual deployments also require this setup. The callable functions use `asia-southeast1`; align this with your database region where practical, and update `VITE_FUNCTIONS_REGION` and the backend region together if needed. Functions are capped at five instances per function; usage and billing should be monitored in the Firebase console.
 
-Add the eventual website hostname to **Authentication → Settings → Authorized domains** if it is not already included. The frontend build creates `dist/`, configured for Firebase Hosting with application route fallbacks. Deployment does not require Firebase Storage: the current map is hosted as static tiles, and lore images accept public HTTPS URLs. Uploading images is not included yet.
+Add the eventual website hostname to **Authentication → Settings → Authorized domains** if it is not already included. The frontend build creates `dist/`, configured for Firebase Hosting with application route fallbacks. Deployment does not require Firebase Storage: the current map is hosted as static tiles, and lore images accept public HTTPS URLs. Character portraits accept JPEG, PNG, or WebP files up to 10 MB, are cropped/resized to 512×512 in the browser, and are saved as small raster images in the private character record (maximum encoded length 220,000 characters). No Firebase Storage setup is needed. Lore image uploads are not included.
 
-### Initial admin
+### Admin activation and invitations
 
-1. Create the admin's regular account through the app.
-2. Copy that account's UID from Firebase Authentication.
-3. On a trusted machine with Application Default Credentials authorized for this project, run:
+Open https://mergingsunapp-2.web.app/admin/activate, sign in, and enter a valid private key. In **World Editor → Admin invitations**, an existing admin can generate a key for any signed-in recipient. Keys use 256 random bits, expire after 24 hours, and can be used once. Their plaintext is shown only to the creator; the database stores a SHA-256 hash as the invitation ID. Unused invitations can be revoked. Generation is limited to five per admin per hour and failed redemptions to ten per account per ten minutes. Successful network retries are idempotent.
+
+The initial deployment includes only a hash, target UID, and expiry in `functions/src/bootstrap.ts`. Its privately delivered key can activate only that account. It creates no role until the matching signed-in owner redeems it, and the same single-use database marker prevents reuse. No plaintext bootstrap key belongs in source control, builds, logs, or URLs. The bootstrap key can be removed from future deployments once used.
+
+For recovery or a future owner-authorized first invitation, on a trusted machine with Google Application Default Credentials for this project:
 
 ```bash
-npm --prefix functions run set-admin -- FIREBASE_AUTH_UID
+npm --prefix functions run invite-admin -- OPTIONAL_TARGET_UID
 ```
 
-For local Google Cloud credentials, an authorized operator can use `gcloud auth application-default login` before the command. Do not put service-account JSON, passwords, or admin credentials into the repository or browser. The helper preserves any existing custom claims. Sign out and back in to pick up the new role.
+Without a target UID, the first signed-in recipient can redeem the key. Admin activation writes a server-controlled `adminRoles/{uid}` record, and the UI updates without signing out. Backend functions and Firestore rules recognize this role and existing legacy `admin: true` token claims. No Firebase Authentication administration permission is needed for invitations; the runtime's existing Firestore permission suffices.
 
-Players cannot write character energy, positions, worlds, or journeys directly to Firestore. `createCharacter`, `travel`, and `publishWorld` are authenticated callable functions. World publishing requires an `admin: true` custom claim. Other players' characters and travel histories are private. World content is public.
+### Private player details
+
+Real names and portraits are stored in `characters/{uid}`, whose reads are restricted to the owner and admins. They are never written into the public world document. Character creation drafts are scoped to the signed-in account and current character, saved on the device, and cleared after success. Images can be skipped. Recreation requires explicit confirmation and an expected character generation; server transactions archive the previous profile, create a fresh generation, and prevent late travel from moving the replacement. Legacy characters keep their existing journeys until recreated.
+
+Players cannot write character energy, positions, worlds, or journeys directly to Firestore. `createCharacter`, `travel`, and `publishWorld` are authenticated callable functions. World publishing requires a server-managed admin role or a legacy `admin: true` claim. Other players' characters and travel histories are private. World content is public.
 
 Travel uses transactions and idempotency request IDs. World publication checks versions to prevent one admin overwriting another's work and backs up the previous version. For this first version, publication supports up to 400 characters in one transaction and up to 800 KB of world data. Larger populations need a batched migration/maintenance workflow; publication explicitly refuses to proceed beyond the limit.
 
@@ -110,6 +118,7 @@ npm run build
 npm run build:backend
 npm run test:e2e
 npm run test:auth
+npm run test:connected-ui
 ```
 
 Playwright uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` to your browser binary elsewhere. It starts or reuses Vite on port 5173. `npm run test:auth` runs four real browser authentication checks against the local Auth emulator, including registration, session persistence, sign-in, and password reset. It needs no Firestore emulator download.
@@ -151,4 +160,4 @@ This normalizes the artwork to the existing 2400×1800 map coordinate system, cr
 
 ## Current boundaries
 
-The app is a first playable version deployed through GitHub Actions. It has no boats or horses, inventory, combat, multiplayer presence, secret lore, player-visible public character directory, image-upload service, or continuously running simulation. Character profile edits and admin energy adjustments are not included yet. Geometry changes reset positions only; they do not refund travel or replenish energy. Server backups are retained in `worldBackups`; the admin restore UI for those backups is a future improvement. Local draft autosave can be limited by browser storage capacity; export important work.
+The app is a first playable version deployed through GitHub Actions. It has no boats or horses, inventory, combat, multiplayer presence, secret lore, player-visible public character directory, general image-upload service, or continuously running simulation. Character profile edits and admin energy adjustments are not included yet. Geometry changes reset positions only; they do not refund travel or replenish energy. Server backups are retained in `worldBackups`; the admin restore UI for those backups is a future improvement. Local draft autosave can be limited by browser storage capacity; export important work.

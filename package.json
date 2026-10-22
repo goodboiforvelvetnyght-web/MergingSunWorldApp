@@ -15,7 +15,8 @@
     "emulators": "firebase emulators:start --project demo-merging-sun --only auth,firestore,functions",
     "format": "prettier --write src shared functions/src functions/scripts scripts tests *.ts *.json *.md",
     "test:auth": "firebase emulators:exec --project demo-merging-sun --only auth 'node scripts/test-auth.mjs'",
-    "deploy": "npm run build && firebase deploy --project mergingsunapp-2 --only firestore:rules,firestore:indexes,functions,hosting"
+    "deploy": "npm run build && firebase deploy --project mergingsunapp-2 --only firestore:rules,firestore:indexes,functions,hosting",
+    "test:connected-ui": "firebase emulators:exec --project demo-merging-sun --only auth,firestore,functions 'node scripts/test-connected-ui.mjs'"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",

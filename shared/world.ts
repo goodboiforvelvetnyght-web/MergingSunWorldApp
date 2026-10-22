@@ -11,7 +11,7 @@ export { WIDTH, HEIGHT };
 export type Terrain = "plains" | "forest" | "mountain" | "water";
 export type Point = { x: number; y: number };
 export type Hex = { q: number; r: number };
-export type Tile = { terrain: Terrain; river: boolean };
+export type Tile = { terrain: Terrain; river: boolean; road?: boolean };
 export type PlaceEntry = {
   id: string;
   name: string;
@@ -52,6 +52,9 @@ export type Character = {
   originLocationId: string | null;
   currentLocationId?: string | null;
   internalLocationId?: string | null;
+  incarnationId?: string;
+  realName?: string;
+  portrait?: string;
   name: string;
   title: string;
   bio: string;
@@ -61,6 +64,19 @@ export type Character = {
   energyAt: number;
   createdAt: number;
 };
+export type CharacterCreationData = {
+  name: string;
+  title: string;
+  bio: string;
+  locationId: string;
+  realName: string;
+  portrait: string;
+  requestId: string;
+  replace: boolean;
+  expectedGeneration: string | null;
+};
+export const characterGeneration = (c: Character) =>
+  c.incarnationId ?? `legacy-${c.createdAt}`;
 export type Journey = {
   id: string;
   from: string;
@@ -173,7 +189,7 @@ export function baseTile(p: Point, radius: number): Tile {
 export const tileAt = (h: Hex, w: World): Tile =>
   w.tiles[key(h)] ?? baseTile(center(h, w), w.radius);
 export const entryCost = (t: Tile) =>
-  COSTS[t.terrain] + (t.river ? RIVER_COST : 0);
+  COSTS[t.terrain] * (t.road ? 0.5 : 1) + (t.river ? RIVER_COST : 0);
 export function inBounds(h: Hex, w: World) {
   const p = center(h, w);
   return p.x >= 0 && p.y >= 0 && p.x <= WIDTH && p.y <= HEIGHT;
@@ -211,6 +227,9 @@ export type Route = {
   cost: number;
   steps: number;
   riverEntries: number;
+  rawCost: number;
+  roadSavings: number;
+  rounding: number;
   terrainCosts: Record<Terrain, number>;
 };
 export function findRoute(start: Hex, end: Hex, w: World): Route | null {
@@ -230,7 +249,7 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
     let current = start,
       best = Infinity;
     for (const [k, h] of open) {
-      const score = g.get(k)! + hexDistance(h, end) * 2;
+      const score = g.get(k)! + hexDistance(h, end);
       if (score < best) {
         best = score;
         current = h;
@@ -248,15 +267,20 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
         mountain: 0,
         water: 0,
       };
-      let riverEntries = 0;
+      let riverEntries = 0,
+        roadSavings = 0;
       for (const h of path.slice(1)) {
         const t = tileAt(h, w);
-        terrainCosts[t.terrain] += COSTS[t.terrain];
+        terrainCosts[t.terrain] += COSTS[t.terrain] * (t.road ? 0.5 : 1);
+        if (t.road) roadSavings += COSTS[t.terrain] * 0.5;
         if (t.river) riverEntries++;
       }
       return {
         path,
-        cost: g.get(ck)!,
+        cost: Math.ceil(g.get(ck)!),
+        rawCost: g.get(ck)!,
+        roadSavings,
+        rounding: Math.ceil(g.get(ck)!) - g.get(ck)!,
         steps: path.length - 1,
         riverEntries,
         terrainCosts,

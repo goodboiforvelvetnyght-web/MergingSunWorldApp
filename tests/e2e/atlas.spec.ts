@@ -36,8 +36,25 @@ test("character creation, instant travel, cost display, history, and persistence
     .getByRole("button", { name: "Create your own demo character" })
     .click();
   await page.getByLabel("Character name", { exact: true }).fill("Rowan");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page
-    .getByRole("button", { name: "Create character", exact: true })
+    .getByRole("button", { name: "The Sunward Reach", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByRole("button", { name: /Emberfall Available birthplace/ })
+    .click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page
+    .getByLabel("Backstory", { exact: true })
+    .fill("A road to remember.");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("button", { name: "Skip for now", exact: true }).click();
+  await page.getByLabel("Your real name", { exact: true }).fill("Player Rowan");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("checkbox").check();
+  await page
+    .getByRole("button", { name: "Enter the world", exact: true })
     .click();
   await expect(
     page.getByRole("heading", { name: "Rowan", exact: true }),

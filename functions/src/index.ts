@@ -1,5 +1,10 @@
-import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { db } from "./firebase.js";
+import { requireAdmin } from "./adminInvitations.js";
+export {
+  generateAdminInvitation,
+  redeemAdminInvitation,
+  revokeAdminInvitation,
+} from "./adminInvitations.js";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
@@ -7,6 +12,7 @@ import {
   normalizeWorld,
   characterAfterWorldChange,
   makeCharacter,
+  characterGeneration,
   findRoute,
   hexAt,
   center,
@@ -17,13 +23,11 @@ import {
   type World,
   type Character,
 } from "../../shared/world.js";
-initializeApp();
 setGlobalOptions({
   region: "asia-southeast1",
   maxInstances: 5,
   serviceAccount: "merging-sun-runtime@mergingsunapp-2.iam.gserviceaccount.com",
 });
-const db = getFirestore();
 const worldRef = db.doc("worlds/main");
 function textField(
   value: unknown,
@@ -55,27 +59,92 @@ function point(v: unknown): v is { x: number; y: number } {
     v.y <= 1800
   );
 }
+function portraitField(value: unknown): string {
+  if (value === undefined || value === "") return "";
+  if (typeof value !== "string" || value.length > 220000)
+    throw new HttpsError(
+      "invalid-argument",
+      "The portrait must be a small JPEG, PNG, or WebP image.",
+    );
+  const match =
+    /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match)
+    throw new HttpsError("invalid-argument", "Invalid portrait format.");
+  const bytes = Buffer.from(match[2], "base64");
+  const valid =
+    match[1] === "jpeg"
+      ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : match[1] === "png"
+        ? bytes
+            .subarray(0, 8)
+            .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        : bytes.toString("ascii", 0, 4) === "RIFF" &&
+          bytes.toString("ascii", 8, 12) === "WEBP";
+  if (!valid || bytes.toString("base64") !== match[2])
+    throw new HttpsError("invalid-argument", "Invalid portrait image.");
+  return value;
+}
 export const createCharacter = onCall(async (request) => {
   if (!request.auth)
     throw new HttpsError("unauthenticated", "Sign in to create a character.");
   const data = request.data ?? {},
     name = textField(data.name, "name", 40),
     title = textField(data.title ?? "", "title", 60, false),
-    bio = textField(data.bio ?? "", "biography", 1500, false),
-    locationId = textField(data.locationId, "starting location", 80);
+    bio = textField(data.bio ?? "", "backstory", 1500, false),
+    realName = textField(data.realName, "real name", 100),
+    portrait = portraitField(data.portrait),
+    locationId = textField(data.locationId, "starting location", 80),
+    requestId = data.requestId;
+  if (
+    typeof requestId !== "string" ||
+    !/^[\w-]{16,80}$/.test(requestId) ||
+    (data.replace !== undefined && typeof data.replace !== "boolean")
+  )
+    throw new HttpsError(
+      "invalid-argument",
+      "Invalid character creation request.",
+    );
   return db.runTransaction(async (tx) => {
     const ref = db.doc(`characters/${request.auth!.uid}`);
     const [existing, ws] = await Promise.all([tx.get(ref), tx.get(worldRef)]);
-    if (existing.exists)
+    const previous = existing.exists ? (existing.data() as Character) : null;
+    if (previous?.incarnationId === requestId) return previous;
+    if (previous && data.replace !== true)
       throw new HttpsError("already-exists", "You already have a character.");
+    if (
+      data.replace === true &&
+      (!previous || data.expectedGeneration !== characterGeneration(previous))
+    )
+      throw new HttpsError(
+        "failed-precondition",
+        "Your character changed. Reload before recreating it.",
+      );
     const w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
-    const location = w.locations.find((l) => l.id === locationId && l.starting);
+    const location = w.locations.find(
+      (l) =>
+        l.id === locationId &&
+        l.starting &&
+        l.kingdomId &&
+        w.territories.some((k) => k.id === l.kingdomId),
+    );
     if (!location || !Number.isFinite(entryCost(tileAt(hexAt(location, w), w))))
       throw new HttpsError(
         "failed-precondition",
-        "Choose a walkable starting settlement.",
+        "Choose a walkable starting settlement belonging to a kingdom.",
       );
-    const c = makeCharacter(name, title, bio, location, w);
+    const c: Character = {
+      ...makeCharacter(name, title, bio, location, w),
+      realName,
+      portrait,
+      incarnationId: requestId,
+      currentLocationId: location.id,
+      internalLocationId: null,
+    };
+    if (previous)
+      tx.set(
+        ref.collection("incarnations").doc(characterGeneration(previous)),
+        previous,
+      );
     tx.set(ref, c);
     return c;
   });
@@ -83,7 +152,8 @@ export const createCharacter = onCall(async (request) => {
 export const travel = onCall(async (request) => {
   if (!request.auth)
     throw new HttpsError("unauthenticated", "Sign in to travel.");
-  const { destination, worldVersion, requestId } = request.data ?? {};
+  const { destination, worldVersion, requestId, generation } =
+    request.data ?? {};
   if (
     !point(destination) ||
     !Number.isInteger(worldVersion) ||
@@ -92,19 +162,33 @@ export const travel = onCall(async (request) => {
   )
     throw new HttpsError("invalid-argument", "Invalid journey.");
   return db.runTransaction(async (tx) => {
-    const characterRef = db.doc(`characters/${request.auth!.uid}`),
-      journeyRef = characterRef.collection("journeys").doc(requestId);
-    const [cs, ws, js] = await Promise.all([
+    const characterRef = db.doc(`characters/${request.auth!.uid}`);
+    const [cs, ws] = await Promise.all([
       tx.get(characterRef),
       tx.get(worldRef),
-      tx.get(journeyRef),
     ]);
     if (!cs.exists)
       throw new HttpsError("failed-precondition", "Create a character first.");
-    if (js.exists)
-      return { character: cs.data(), journey: { id: js.id, ...js.data() } };
     const c = cs.data() as Character,
       w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
+    if (
+      (c.incarnationId || generation !== undefined) &&
+      generation !== characterGeneration(c)
+    )
+      throw new HttpsError(
+        "failed-precondition",
+        "Your character changed. Preview your journey again.",
+      );
+    const journeyRef = c.incarnationId
+      ? characterRef
+          .collection("incarnations")
+          .doc(c.incarnationId)
+          .collection("journeys")
+          .doc(requestId)
+      : characterRef.collection("journeys").doc(requestId);
+    const js = await tx.get(journeyRef);
+    if (js.exists)
+      return { character: c, journey: { id: js.id, ...js.data() } };
     if (w.version !== worldVersion)
       throw new HttpsError(
         "failed-precondition",
@@ -176,10 +260,11 @@ function validateWorld(input: unknown): World {
       !/^-?\d{1,3},-?\d{1,3}$/.test(k) ||
       !t ||
       !["plains", "forest", "mountain", "water"].includes(t.terrain) ||
-      typeof t.river !== "boolean"
+      typeof t.river !== "boolean" ||
+      (t.road !== undefined && typeof t.road !== "boolean")
     )
       throw new HttpsError("invalid-argument", "Invalid terrain tile.");
-    tiles[k] = { terrain: t.terrain, river: t.river };
+    tiles[k] = { terrain: t.terrain, river: t.river, road: t.road ?? false };
   }
   const seen = new Set<string>();
   const uniqueId = (value: unknown, label: string) => {
@@ -279,11 +364,7 @@ function validateWorld(input: unknown): World {
   return clean;
 }
 export const publishWorld = onCall(async (request) => {
-  if (request.auth?.token.admin !== true)
-    throw new HttpsError(
-      "permission-denied",
-      "Only admins can publish the world.",
-    );
+  await requireAdmin(request.auth);
   const world = validateWorld(request.data?.world);
   return db.runTransaction(async (tx) => {
     const current = await tx.get(worldRef),

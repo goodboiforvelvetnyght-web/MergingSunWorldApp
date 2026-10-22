@@ -13,13 +13,15 @@ import { auth, db, functions } from "./firebase";
 import {
   DEFAULT_WORLD,
   normalizeWorld,
+  characterGeneration,
   type Character,
   type World,
   type Journey,
 } from "../shared/world";
 export function useCloud() {
   const [user, setUser] = useState<User | null>(null),
-    [admin, setAdmin] = useState(false),
+    [claimAdmin, setClaimAdmin] = useState(false),
+    [roleAdmin, setRoleAdmin] = useState(false),
     [world, setWorld] = useState<World>(DEFAULT_WORLD),
     [character, setCharacter] = useState<Character | null>(null),
     [journeys, setJourneys] = useState<Journey[]>([]),
@@ -30,15 +32,18 @@ export function useCloud() {
     () =>
       onAuthStateChanged(auth, (u) => {
         setUser(u);
-        setAdmin(false);
+        setCharacter(null);
+        setJourneys([]);
+        setRoleAdmin(false);
+        setClaimAdmin(false);
         if (u)
           void u
             .getIdTokenResult()
             .then((t) => {
               if (auth.currentUser?.uid === u.uid)
-                setAdmin(t.claims.admin === true);
+                setClaimAdmin(t.claims.admin === true);
             })
-            .catch(() => setAdmin(false));
+            .catch(() => setClaimAdmin(false));
       }),
     [],
   );
@@ -56,29 +61,45 @@ export function useCloud() {
     [],
   );
   useEffect(() => {
+    setRoleAdmin(false);
     setCharacter(null);
-    setJourneys([]);
     if (!user) return;
-    const a = onSnapshot(
+    const role = onSnapshot(
+      doc(db, "adminRoles", user.uid),
+      (s) => setRoleAdmin(s.data()?.role === "admin"),
+      () => setRoleAdmin(false),
+    );
+    const profile = onSnapshot(
       doc(db, "characters", user.uid),
       (s) => setCharacter(s.exists() ? (s.data() as Character) : null),
       () => setStatus("unavailable"),
     );
-    const b = onSnapshot(
-      query(
-        collection(db, "characters", user.uid, "journeys"),
-        orderBy("at", "desc"),
-        limit(20),
-      ),
+    return () => {
+      role();
+      profile();
+    };
+  }, [user?.uid]);
+  const generation = character ? characterGeneration(character) : null;
+  useEffect(() => {
+    setJourneys([]);
+    if (!user || !character) return;
+    const path = character.incarnationId
+      ? [
+          "characters",
+          user.uid,
+          "incarnations",
+          character.incarnationId,
+          "journeys",
+        ]
+      : ["characters", user.uid, "journeys"];
+    return onSnapshot(
+      query(collection(db, path.join("/")), orderBy("at", "desc"), limit(20)),
       (s) =>
         setJourneys(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Journey)),
       () => {},
     );
-    return () => {
-      a();
-      b();
-    };
-  }, [user]);
+  }, [user?.uid, generation]);
+  const admin = claimAdmin || roleAdmin;
   return { user, admin, world, character, journeys, status };
 }
 export async function call<T>(name: string, data: unknown): Promise<T> {

@@ -65,6 +65,8 @@ jobs:
           node --input-type=module -e "import { chromium } from '@playwright/test'; console.log('CHROMIUM_PATH=' + chromium.executablePath())" >> "$GITHUB_ENV"
       - name: Test real sign-in flows in the Auth emulator
         run: npm run test:auth
+      - name: Test admin activation and connected character creation
+        run: npm run test:connected-ui
       - name: Test the production website
         shell: bash
         run: |

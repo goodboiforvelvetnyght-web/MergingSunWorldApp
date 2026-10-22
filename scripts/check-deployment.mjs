@@ -10,7 +10,14 @@ const tile = await fetch(`${root}/map/tiles/0/0/0.webp`, {
 assert.equal(tile.status, 200, "The map tile must be available");
 const bytes = Buffer.from(await tile.arrayBuffer());
 assert.equal(bytes.toString("ascii", 8, 12), "WEBP");
-for (const name of ["createCharacter", "travel", "publishWorld"]) {
+for (const name of [
+  "createCharacter",
+  "travel",
+  "publishWorld",
+  "generateAdminInvitation",
+  "redeemAdminInvitation",
+  "revokeAdminInvitation",
+]) {
   const response = await fetch(
     `https://asia-southeast1-mergingsunapp-2.cloudfunctions.net/${name}`,
     {
@@ -21,14 +28,19 @@ for (const name of ["createCharacter", "travel", "publishWorld"]) {
     },
   );
   const body = await response.json();
-  const expected =
-    name === "publishWorld" ? "PERMISSION_DENIED" : "UNAUTHENTICATED";
+  const expected = [
+    "publishWorld",
+    "generateAdminInvitation",
+    "revokeAdminInvitation",
+  ].includes(name)
+    ? "PERMISSION_DENIED"
+    : "UNAUTHENTICATED";
   assert.equal(
     body.error?.status,
     expected,
     `${name} must reject an unauthenticated caller`,
   );
-  assert.equal(response.status, name === "publishWorld" ? 403 : 401);
+  assert.equal(response.status, expected === "PERMISSION_DENIED" ? 403 : 401);
 }
 console.log(
   "Live smoke checks passed: Hosting, a map tile, and authentication enforcement on all callable functions.",

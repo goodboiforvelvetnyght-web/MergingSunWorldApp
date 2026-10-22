@@ -205,3 +205,45 @@ describe("Kingdom hierarchy and character preservation", () => {
     });
   });
 });
+
+describe("Road discounts and least-energy routing", () => {
+  it("halves terrain costs while leaving river surcharges intact", () => {
+    expect(entryCost({ terrain: "plains", road: true, river: false })).toBe(1);
+    expect(entryCost({ terrain: "forest", road: true, river: false })).toBe(2);
+    expect(entryCost({ terrain: "mountain", road: true, river: false })).toBe(
+      3.5,
+    );
+    expect(entryCost({ terrain: "mountain", road: true, river: true })).toBe(
+      6.5,
+    );
+    expect(entryCost({ terrain: "water", road: true, river: false })).toBe(
+      Infinity,
+    );
+  });
+  it("rounds the whole journey once, not each entered mountain tile", () => {
+    const world = flat();
+    for (const h of allHexes(world))
+      world.tiles[key(h)] = { terrain: "water", river: false };
+    world.tiles["8,8"] = { terrain: "plains", river: false };
+    world.tiles["9,8"] = { terrain: "mountain", road: true, river: false };
+    world.tiles["10,8"] = { terrain: "mountain", road: true, river: true };
+    const single = findRoute({ q: 8, r: 8 }, { q: 9, r: 8 }, world)!;
+    expect(single.rawCost).toBe(3.5);
+    expect(single.cost).toBe(4);
+    expect(single.rounding).toBe(0.5);
+    const double = findRoute({ q: 8, r: 8 }, { q: 10, r: 8 }, world)!;
+    expect(double.rawCost).toBe(10);
+    expect(double.cost).toBe(10);
+    expect(double.terrainCosts.mountain).toBe(7);
+    expect(double.roadSavings).toBe(7);
+    expect(double.riverEntries).toBe(1);
+  });
+  it("takes a longer road when it costs less than the direct route", () => {
+    const world = flat();
+    for (const id of ["8,9", "9,9", "10,9", "11,8"])
+      world.tiles[id].road = true;
+    const route = findRoute({ q: 8, r: 8 }, { q: 11, r: 8 }, world)!;
+    expect(route.cost).toBe(4);
+    expect(route.steps).toBe(4);
+  });
+});
