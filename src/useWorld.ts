@@ -154,10 +154,21 @@ export function friendlyError(e: unknown) {
     "auth/email-already-in-use":
       "An account already uses this email. Try signing in.",
     "auth/invalid-credential": "The email or password is incorrect.",
+    "auth/wrong-password": "The email or password is incorrect.",
     "auth/weak-password": "Choose a password with at least 8 characters.",
     "auth/too-many-requests": "Too many attempts. Please try again later.",
     "auth/network-request-failed":
       "Could not reach Firebase. Check your connection.",
+    "auth/internal-error":
+      "Could not open sign-in. Check your connection or try email and password.",
+    "auth/popup-blocked":
+      "Your browser blocked the Google sign-in window. Allow pop-ups for this site, then try again.",
+    "auth/operation-not-allowed":
+      "This sign-in method is not enabled yet. Please use email and password for now.",
+    "auth/account-exists-with-different-credential":
+      "An account already uses this email with another sign-in method. Sign in with that method first.",
+    "auth/credential-already-in-use":
+      "This Google account is already connected to a different account. Use that account to sign in.",
     "auth/unauthorized-domain":
       "This website domain must be added to Firebase Authentication’s authorized domains.",
     "functions/unavailable":

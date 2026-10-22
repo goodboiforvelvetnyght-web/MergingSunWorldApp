@@ -3578,3 +3578,36 @@ input[type="range"] {
     line-height: 1.7;
   }
 }
+
+.auth-provider-options {
+  margin: 20px 0;
+}
+.button.google-sign-in {
+  background: #fff;
+  border: 1px solid #b7bfc3;
+  color: #28362f;
+  font-weight: 600;
+  min-height: 44px;
+}
+.button.google-sign-in:hover:not(:disabled) {
+  background: #f3f6f4;
+  border-color: #74837a;
+}
+.google-sign-in svg {
+  flex-shrink: 0;
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 20px;
+  color: #6a746d;
+  font-size: 12px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  background: #dfe3df;
+  flex: 1;
+}

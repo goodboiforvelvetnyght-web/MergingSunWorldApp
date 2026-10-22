@@ -41,3 +41,9 @@ The unit suite now has 29 tests. New geometry checks cover anchor interpolation,
 The production browser suite has 19 tests. New checks exercise multi-step point dragging as one undo action, redo, text-field shortcut isolation, right-click corner changes, segment insertion, minimum closed-border size, middle-button panning during drawing, wheel zoom without geometry changes, local border-form recovery and separate publication. Editor tests run on desktop; player creation, map and location flows retain mobile checks. The connected browser and Auth suites continue to run against isolated emulators before release.
 
 No production world content is changed by deploying this UI. Existing borders retain their straight appearance until an admin selects a smooth border and publishes it. Road smoothing changes only rendering; terrain, river and energy calculations remain authoritative on the hex grid.
+
+## Google account sign-in — 22 October 2026
+
+The Auth emulator browser suite now has nine checks: the four existing email/password flows plus Google popup registration and reload persistence, existing same-email UID preservation, password-verified collision linking (including a wrong-password rejection), cancellation and blocked-popup recovery. The collision case models an unverified provider response in the isolated emulator widget so Firebase requires explicit linking; no real Google account or production user is created.
+
+The production browser suite now has 20 tests, including Google availability during login/registration and the unchanged email reset flow. The project's public Firebase configuration was checked for authorized Hosting domains and a Google authorization URL before release. The app continues to use UID-based roles and character ownership; no backend authorization rule changes are required.

@@ -34,7 +34,7 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Road overlays connect smoothly through road tiles while retaining hex-based route costs.
 - Confirmed kingdom deletion removes its border, settlements, and their internal entries. Settlement deletion removes its entries. Characters stay in place and references to deleted places are cleared.
 - Locally autosaved world and lore drafts; explicit world publication; world JSON export. The local preview can restore its previous saved world into a draft. Connected world publication keeps server-side version backups.
-- Firebase email/password sign-up, sign-in, password reset, and server-managed admin roles with expiring, single-use invitations.
+- Firebase Google sign-in, email/password sign-up and sign-in, password reset, and server-managed admin roles with expiring, single-use invitations.
 - Firebase Storage uploads for tiled map artwork, private portraits, and kingdom flags/coats of arms, with draft preview and zoom-aware heraldry.
 - Settlement population counts, enterable internal locations, and server-enforced shared-room character profiles.
 - Responsive desktop and phone player layouts, a PC-focused world editor, keyboard-accessible controls, and a `/` shortcut for search.
@@ -96,6 +96,14 @@ Add the eventual website hostname to **Authentication → Settings → Authorize
 
 See [the review, image, and occupancy guide](docs/character-review-and-world-images.md) for player/admin workflows, migration behavior, image limits, and privacy rules.
 
+### Google sign-in
+
+Choose **Sign in → Continue with Google**, or use the same button during registration. Google handles the account chooser and password; the app receives a Firebase session. New Google users continue through the same character submission/review process. Google sign-in does not grant admin access.
+
+Existing players should choose the Google account with the same email as their existing account. Firebase keeps the account UID for a trusted same-email Google identity. If it requires verification of the existing account, the app asks for that account's password before linking Google to the same UID; characters and admin roles stay attached to that UID. Pending Google credentials stay only in memory. Choosing an unrelated Google email creates a separate account.
+
+The current Firebase project already has Google sign-in available and both Hosting domains authorized. For a different project, enable **Authentication → Sign-in method → Google**, select a support email and add the website's hostname under **Authorized domains**. Popup sign-in is used on desktop and phone; allow popups for this site if the browser blocks the account chooser. Email/password remains available.
+
 ### Admin activation and invitations
 
 Open https://mergingsunapp-2.web.app/admin/activate, sign in, and enter a valid private key. In **World Editor → Admin invitations**, an existing admin can generate a key for any signed-in recipient. Keys use 256 random bits, expire after 24 hours, and can be used once. Their plaintext is shown only to the creator; the database stores a SHA-256 hash as the invitation ID. Unused invitations can be revoked. Generation is limited to five per admin per hour and failed redemptions to ten per account per ten minutes. Successful network retries are idempotent.
@@ -129,7 +137,7 @@ npm run test:auth
 npm run test:connected-ui
 ```
 
-Playwright uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` to your browser binary elsewhere. It starts or reuses Vite on port 5173. `npm run test:auth` runs four real browser authentication checks against the local Auth emulator, including registration, session persistence, sign-in, and password reset. It needs no Firestore emulator download.
+Playwright uses `/usr/bin/chromium` by default; set `CHROMIUM_PATH` to your browser binary elsewhere. It starts or reuses Vite on port 5173. `npm run test:auth` runs nine browser authentication checks against the local Auth emulator, including email/password flows, Google popup registration, session persistence, same-email account preservation, password-verified linking, cancellation and blocked popups. It needs no Firestore emulator download.
 
 The browser suite covers map loading, lore deep links, character creation, energy-based travel, history persistence, editor changes, undo, grid-origin resets, and mobile controls.
 

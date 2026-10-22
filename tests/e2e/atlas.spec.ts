@@ -203,3 +203,35 @@ test("world editor directs phone users to the desktop workspace", async ({
   await page.getByRole("button", { name: "Return to player atlas" }).click();
   await expect(page.getByTestId("world-map")).toBeVisible();
 });
+
+test("Google sign-in is available for login and registration", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "Sign in", exact: true })
+    .last()
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Create an account", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google", exact: true }),
+  ).toHaveAttribute("type", "button");
+  await page
+    .getByRole("button", { name: "Sign in", exact: true })
+    .last()
+    .click();
+  await page
+    .getByRole("button", { name: "Forgot password?", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Continue with Google", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Send reset link", exact: true }),
+  ).toBeVisible();
+});
