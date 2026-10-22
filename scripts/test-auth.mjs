@@ -192,9 +192,11 @@ try {
   const popup = await popupPromise;
   await popup.waitForLoadState();
   await popup.close();
+  // Firebase polls the closed window (up to 10s), then allows 8s for an
+  // in-flight auth event. Cover that documented SDK window on CI browsers.
   await expect(
     page.getByRole("button", { name: "Continue with Google", exact: true }),
-  ).toBeEnabled({ timeout: 10000 });
+  ).toBeEnabled({ timeout: 25000 });
   await expect(page.getByRole("alert")).toHaveCount(0);
   console.log(
     "PASS cancelled Google popup returns to an available sign-in form",
