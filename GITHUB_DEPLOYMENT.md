@@ -1,6 +1,6 @@
 # Publish through GitHub
 
-The repository's **Test and deploy Firebase** workflow builds the app, runs the route tests, checks Firebase security rules and transactions in emulators, and tests the website and sign-in in a browser. A successful `main` build can then publish the site, functions, and Firestore rules to `mergingsunapp-2`.
+The repository's **Test and deploy Firebase** workflow builds the app, runs the route tests, checks Firebase security rules and transactions in emulators, and tests the website and sign-in in a browser. A successful `main` build can then publish the site, functions, Firestore rules, and Storage rules to `mergingsunapp-2`.
 
 The deployment connection uses Google Workload Identity Federation: GitHub receives short-lived credentials for a dedicated deployment identity. There is no service-account JSON key, Firebase token, password, or secret to copy into GitHub.
 
@@ -49,7 +49,7 @@ Runs are serialized so one deployment does not interrupt another. The website de
 
 ## Confirm it is live
 
-A successful run reports the actual deployment result and checks the Hosting page, a map tile, and authentication enforcement on all three callable functions. The expected default address is `https://mergingsunapp-2.web.app`; it is only a live app after the first successful deployment.
+A successful run reports the actual deployment result and checks the Hosting page, a map tile, and authentication enforcement on all gameplay and admin callable functions. The expected default address is `https://mergingsunapp-2.web.app`; it is only a live app after the first successful deployment.
 
 For the first release, also sign in on the live website, create a character, and complete a journey. GitHub's public smoke check deliberately creates no real users and changes no world data.
 

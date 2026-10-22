@@ -6,7 +6,7 @@ The app is built, and its local browser, authentication, and backend integration
 
 ## 1. Enable the required billing plan
 
-Open the Firebase console, choose **MergingSunAPP-2** (project ID `mergingsunapp-2`), and check the billing plan. If it is still on Spark, upgrade to **Blaze** and link a billing account. Cloud Functions needs this plan to run the server-side travel and admin logic. You do not need to enable Firebase Storage for this version.
+Open the Firebase console, choose **MergingSunAPP-2** (project ID `mergingsunapp-2`), and check the billing plan. If it is still on Spark, upgrade to **Blaze** and link a billing account. Cloud Functions needs this plan to run the server-side travel and admin logic. Firebase Storage must be initialized for portraits, map uploads, and kingdom emblems. Grant the custom runtime access using the [Storage setup command](GITHUB_DEPLOYMENT.md#image-storage-access).
 
 ## 2. Get the project onto your computer
 
@@ -27,11 +27,11 @@ The login command opens your browser. Sign in to the Google account that owns or
 
 If you are already signed in with a different Google account, use `npx firebase login --reauth` and select the correct account.
 
-`npm run deploy` builds the website, compiles the backend through the configured predeploy hook, then deploys the Firestore rules and indexes, Cloud Functions, and Firebase Hosting to **mergingsunapp-2**. It changes the live project. Firebase may ask to enable required Google Cloud APIs or choose an artifact cleanup policy; review those prompts. A successful command prints the actual Hosting URL. Do not assume deployment succeeded until it reports completion.
+`npm run deploy` builds the website, compiles the backend through the configured predeploy hook, then deploys the Firestore rules and indexes, Storage rules, Cloud Functions, and Firebase Hosting to **mergingsunapp-2**. It changes the live project. Firebase may ask to enable required Google Cloud APIs or choose an artifact cleanup policy; review those prompts. A successful command prints the actual Hosting URL. Do not assume deployment succeeded until it reports completion.
 
 ## 4. Check the live app
 
-Open the Hosting URL printed by Firebase. Create a player account, create a character, select another reachable location, preview the cost, and confirm travel. Check that energy and position persist after reloading.
+Open the Hosting URL printed by Firebase. Create a player account, submit a character, approve it from the admin review queue, select another reachable location, preview the cost, and confirm travel. Check that energy and position persist after reloading.
 
 The app's signed-out view is a local demo. Sign in to test the connected world. Demo characters and edits do not transfer to Firebase.
 
@@ -50,4 +50,4 @@ gcloud auth application-default login
 npm --prefix functions run invite-admin -- YOUR_FIREBASE_AUTH_UID
 ```
 
-Do not send Google passwords, login codes, private keys, or service-account files through chat. Firebase Storage does not need to be enabled for this release's small character portraits.
+Do not send Google passwords, login codes, private keys, or service-account files through chat.

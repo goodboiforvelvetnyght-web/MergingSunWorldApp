@@ -5,12 +5,14 @@ export function WorldAssetUpload({
   kind,
   value,
   onChange,
+  onBusyChange,
   demo = false,
 }: {
   kind: "map" | "emblem";
   value?: string | null;
   onChange: (id: string | null, nativeZoom?: number) => void;
   demo?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -23,6 +25,10 @@ export function WorldAssetUpload({
       active.current = false;
     };
   }, []);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   return (
     <div className="asset-upload form-stack">
       <h3>{kind === "map" ? "Map artwork" : "Coat of arms or flag"}</h3>

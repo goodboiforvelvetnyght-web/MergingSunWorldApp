@@ -61,6 +61,7 @@ export function PlacesEditor({
   const [settlementId, setSettlementId] = useState<string | null>(null);
   const [entryEdit, setEntryEdit] = useState<PlaceEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [assetBusy, setAssetBusy] = useState(false);
   const kingdom = world.territories.find((k) => k.id === kingdomId);
   const settlement = world.locations.find(
     (l) => l.id === settlementId && l.kingdomId === kingdom?.id,
@@ -115,6 +116,7 @@ export function PlacesEditor({
         </label>
         <WorldAssetUpload
           kind="emblem"
+          onBusyChange={setAssetBusy}
           value={kingdomEdit.emblemAssetId}
           demo={demo}
           onChange={(emblemAssetId) =>
@@ -250,6 +252,7 @@ export function PlacesEditor({
         <button
           className="button primary"
           disabled={
+            assetBusy ||
             !kingdomEdit.name.trim() ||
             borderPoints.length < 3 ||
             borderPoints.length > 150 ||

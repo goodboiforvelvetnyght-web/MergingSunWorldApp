@@ -180,6 +180,7 @@ export default function App() {
     [viewEntry, setViewEntry] = useState<PlaceEntry | null>(null);
   const [editLocation, setEditLocation] = useState<Location | null>(null),
     [busy, setBusy] = useState(false),
+    [assetBusy, setAssetBusy] = useState(false),
     [toast, setToast] = useState<{ text: string; error?: boolean } | null>(
       null,
     ),
@@ -1312,6 +1313,7 @@ export default function App() {
                   )}
                   <WorldAssetUpload
                     kind="map"
+                    onBusyChange={setAssetBusy}
                     value={draft.mapAssetId}
                     demo={isDemo}
                     onChange={(mapAssetId, mapNativeZoom) =>
@@ -1418,7 +1420,7 @@ export default function App() {
               <div className="editor-actions">
                 <button
                   className="button primary full"
-                  disabled={busy || !dirty || !!kingdomEdit}
+                  disabled={busy || assetBusy || !dirty || !!kingdomEdit}
                   onClick={() => void publish()}
                 >
                   {busy ? (
@@ -1724,7 +1726,10 @@ export default function App() {
             </div>
           )}
           <div className="map-credit">
-            ILLUSTRATED PLACEHOLDER WORLD <span>·</span> ATLAS v0.1
+            {world.mapAssetId
+              ? "MERGING SUN WORLD"
+              : "ILLUSTRATED PLACEHOLDER WORLD"}{" "}
+            <span>·</span> ATLAS v0.1
           </div>
           {destination && (
             <aside

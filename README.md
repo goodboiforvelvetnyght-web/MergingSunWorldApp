@@ -24,7 +24,7 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Searchable cities, towns, and landmarks. Filter by type, open lore, and share a location URL.
 - Hex-grid, terrain, territory, and place-label overlays.
 - Full-page character creation: name → kingdom map and lore → home city and lore → backstory → optional portrait → private real name → review. Home is both birthplace and starting position.
-- Confirmed character recreation starts a new story with 100 energy and a separate journey history. The old profile is archived privately only after successful confirmation.
+- Character applications require admin approval. Rejection includes a written reason and supports editing/resubmission. Replacements keep the current character playable until approval, then begin with 100 energy and separate journey history.
 - Walking route previews with an energy breakdown, immediate travel, and recent journey history.
 - **Landscape** editor with terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
 - Location placement, position editing, rich-text lore, headings, lists, quotes, HTTPS images, and links. Lore is sanitized before display.
@@ -33,11 +33,13 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - Confirmed kingdom deletion removes its border, settlements, and their internal entries. Settlement deletion removes its entries. Characters stay in place and references to deleted places are cleared.
 - Locally autosaved world and lore drafts; explicit world publication; world JSON export. The local preview can restore its previous saved world into a draft. Connected world publication keeps server-side version backups.
 - Firebase email/password sign-up, sign-in, password reset, and server-managed admin roles with expiring, single-use invitations.
+- Firebase Storage uploads for tiled map artwork, private portraits, and kingdom flags/coats of arms, with draft preview and zoom-aware heraldry.
+- Settlement population counts, enterable internal locations, and server-enforced shared-room character profiles.
 - Responsive desktop and phone layouts, keyboard-accessible controls, and a `/` shortcut for search.
 
 ## Places and existing world data
 
-The Places editor starts with kingdoms. Open a kingdom to add a settlement on the map, and open a settlement to add its internal encyclopedia entries. Use **Edit settlement / allegiance** to transfer it, including its entries, to another kingdom. Its position and both borders remain unchanged. Internal entries have stable IDs but no coordinates or character-stay interaction yet.
+The Places editor starts with kingdoms. Open a kingdom to add a settlement on the map, and open a settlement to add its internal encyclopedia entries. Use **Edit settlement / allegiance** to transfer it, including its entries, to another kingdom. Its position and both borders remain unchanged. Internal entries have stable IDs and support character stays; every settlement also has a built-in Town Commons. Characters on a settlement's hex can enter its internal locations.
 
 World schema version 2 keeps the existing `territories` storage field for kingdom records, so border IDs are preserved. Settlements keep their IDs, coordinates, and lore, gain an explicit `kingdomId`, and contain `entries`. Existing region names are matched only to an exactly named kingdom; no geographic inference is used. Unmatched legacy places are preserved and can be assigned from inside a kingdom. Creating new independent places is deferred. Upgrades are normalized on read and persisted when an admin publishes; no automatic production content write is performed by deployment.
 
@@ -86,7 +88,9 @@ npm run deploy
 
 Deployment changes the live project. Review the rules and backend before running that command. Cloud Functions deployment requires the Blaze billing plan. The backend now uses the dedicated `merging-sun-runtime` service account created by the Google setup script. Manual deployments also require this setup. The callable functions use `asia-southeast1`; align this with your database region where practical, and update `VITE_FUNCTIONS_REGION` and the backend region together if needed. Functions are capped at five instances per function; usage and billing should be monitored in the Firebase console.
 
-Add the eventual website hostname to **Authentication → Settings → Authorized domains** if it is not already included. The frontend build creates `dist/`, configured for Firebase Hosting with application route fallbacks. Deployment does not require Firebase Storage: the current map is hosted as static tiles, and lore images accept public HTTPS URLs. Character portraits accept JPEG, PNG, or WebP files up to 10 MB, are cropped/resized to 512×512 in the browser, and are saved as small raster images in the private character record (maximum encoded length 220,000 characters). No Firebase Storage setup is needed. Lore image uploads are not included.
+Add the eventual website hostname to **Authentication → Settings → Authorized domains** if it is not already included. The frontend build creates `dist/`, configured for Firebase Hosting with application route fallbacks. Firebase Storage must be initialized and the custom runtime granted object access on its bucket; see [image storage setup](GITHUB_DEPLOYMENT.md#image-storage-access). Portrait inputs accept JPEG, PNG, or WebP up to 10 MB and are cropped/resized to 512×512 before submission. The backend saves a private WebP object. World map/flag uploads accept up to 6 MiB; public processed images are cached. Lore images still accept public HTTPS URLs; lore image uploads are not included.
+
+See [the review, image, and occupancy guide](docs/character-review-and-world-images.md) for player/admin workflows, migration behavior, image limits, and privacy rules.
 
 ### Admin activation and invitations
 
@@ -104,9 +108,9 @@ Without a target UID, the first signed-in recipient can redeem the key. Admin ac
 
 ### Private player details
 
-Real names and portraits are stored in `characters/{uid}`, whose reads are restricted to the owner and admins. They are never written into the public world document. Character creation drafts are scoped to the signed-in account and current character, saved on the device, and cleared after success. Images can be skipped. Recreation requires explicit confirmation and an expected character generation; server transactions archive the previous profile, create a fresh generation, and prevent late travel from moving the replacement. Legacy characters keep their existing journeys until recreated.
+Real names and portrait references are stored in private character/application records, whose reads are restricted to owners and admins. Image objects live in private Storage. They are never written into the public world document. Character creation drafts are scoped to the signed-in account and current character, saved on the device, and cleared after success. Images can be skipped. Recreation requires explicit confirmation and an expected character generation; approval transactions archive the previous profile, activate a fresh generation, and prevent late travel from moving the replacement. Legacy characters keep their existing journeys until recreated.
 
-Players cannot write character energy, positions, worlds, or journeys directly to Firestore. `createCharacter`, `travel`, and `publishWorld` are authenticated callable functions. World publishing requires a server-managed admin role or a legacy `admin: true` claim. Other players' characters and travel histories are private. World content is public.
+Players cannot write character energy, positions, worlds, or journeys directly to Firestore. `createCharacter`, `travel`, and `publishWorld` are authenticated callable functions. World publishing requires a server-managed admin role or a legacy `admin: true` claim. Private records and travel histories remain owner/admin-only. A server-filtered character profile (name, title, backstory, origin, portrait) is available only to characters sharing an internal location. World content and settlement population counts are public.
 
 Travel uses transactions and idempotency request IDs. World publication checks versions to prevent one admin overwriting another's work and backs up the previous version. For this first version, publication supports up to 400 characters in one transaction and up to 800 KB of world data. Larger populations need a batched migration/maintenance workflow; publication explicitly refuses to proceed beyond the limit.
 
