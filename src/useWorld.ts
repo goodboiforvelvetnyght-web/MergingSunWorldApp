@@ -138,9 +138,11 @@ export function useCloud() {
 export async function call<T>(name: string, data: unknown): Promise<T> {
   const result = await httpsCallable<unknown, T>(functions, name, {
     timeout:
-      name === "uploadWorldAsset" || name === "migrateLegacyPortraits"
-        ? 180000
-        : 70000,
+      name === "uploadWorldAsset"
+        ? 360000
+        : name === "migrateLegacyPortraits"
+          ? 180000
+          : 70000,
   })(data);
   return result.data;
 }

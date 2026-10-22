@@ -2,6 +2,8 @@ import { getStorage } from "firebase-admin/storage";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
+import * as logger from "firebase-functions/logger";
+import { prepareMapTiles } from "./mapTiles.js";
 import { db } from "./firebase.js";
 import { requireAdmin } from "./adminInvitations.js";
 import { ASSET_BUCKET } from "../../shared/assets.js";
@@ -39,7 +41,7 @@ export async function savePortrait(
   return path;
 }
 export const uploadWorldAsset = onCall(
-  { ...options, memory: "1GiB", timeoutSeconds: 120 },
+  { ...options, memory: "1GiB", timeoutSeconds: 300, concurrency: 1 },
   async (request) => {
     await requireAdmin(request.auth);
     const { kind, image } = request.data ?? {};
@@ -85,73 +87,60 @@ export const uploadWorldAsset = onCall(
           resumable: false,
           metadata: { cacheControl: "public,max-age=31536000,immutable" },
         });
-    if (kind === "emblem") {
-      const buffer = await sharp(bytes, { limitInputPixels: 64000000 })
-        .rotate()
-        .resize(256, 256, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 90 })
-        .toBuffer();
-      await save(`public/emblems/${id}/image.webp`, buffer);
-    } else {
-      nativeZoom = width > 2400 || height > 1800 ? 4 : 3;
-      const size = nativeZoom === 4 ? [4800, 3600] : [2400, 1800];
-      const source = await sharp(bytes, { limitInputPixels: 64000000 })
-        .rotate()
-        .resize(size[0], size[1], { fit: "contain", background: "#a8c0bc" })
-        .png()
-        .toBuffer();
-      for (let z = 0; z <= nativeZoom; z++) {
-        const scale = 2 ** (z - 3),
-          w = Math.round(2400 * scale),
-          h = Math.round(1800 * scale);
-        const base = await sharp(source).resize(w, h).png().toBuffer();
-        // Bound concurrency and memory while processing a map once at upload time.
-        for (let x = 0; x < Math.ceil(w / 256); x++) {
-          for (let startY = 0; startY < Math.ceil(h / 256); startY += 3)
-            await Promise.all(
-              Array.from(
-                { length: Math.min(3, Math.ceil(h / 256) - startY) },
-                async (_, offset) => {
-                  const y = startY + offset;
-                  const tw = Math.min(256, w - x * 256),
-                    th = Math.min(256, h - y * 256);
-                  const buffer = await sharp(base)
-                    .extract({
-                      left: x * 256,
-                      top: y * 256,
-                      width: tw,
-                      height: th,
-                    })
-                    .extend({
-                      right: 256 - tw,
-                      bottom: 256 - th,
-                      background: "#a8c0bc",
-                    })
-                    .webp({ quality: 88 })
-                    .toBuffer();
-                  await save(
-                    `public/maps/${id}/tiles/${z}/${x}/${y}.webp`,
-                    buffer,
-                  );
-                },
-              ),
-            );
-        }
-      }
-      await save(
-        `public/maps/${id}/overview.webp`,
-        await sharp(source).resize(720).webp({ quality: 85 }).toBuffer(),
-      );
-    }
-    await db.doc(`imageAssets/${id}`).set({
+    const startedAt = Date.now();
+    let stage = "processing";
+    logger.info("Preparing world artwork", {
+      id,
       kind,
-      createdAt: Date.now(),
-      createdBy: request.auth!.uid,
       width,
       height,
-      nativeZoom,
+      bytes: bytes.length,
     });
-    return { id, nativeZoom };
+    try {
+      if (kind === "emblem") {
+        const buffer = await sharp(bytes, { limitInputPixels: 64000000 })
+          .rotate()
+          .resize(256, 256, { fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 90 })
+          .toBuffer();
+        await save(`public/emblems/${id}/image.webp`, buffer);
+      } else {
+        nativeZoom = width > 2400 || height > 1800 ? 4 : 3;
+        await prepareMapTiles(bytes, nativeZoom, (path, buffer) =>
+          save(`public/maps/${id}/${path}`, buffer),
+        );
+      }
+      stage = "manifest";
+      await db.doc(`imageAssets/${id}`).set({
+        kind,
+        createdAt: Date.now(),
+        createdBy: request.auth!.uid,
+        width,
+        height,
+        nativeZoom,
+      });
+      logger.info("World artwork ready", {
+        id,
+        kind,
+        nativeZoom,
+        durationMs: Date.now() - startedAt,
+      });
+      return { id, nativeZoom };
+    } catch (error) {
+      const failure = error as { name?: string; code?: string | number };
+      logger.error("World artwork preparation failed", {
+        id,
+        kind,
+        stage,
+        durationMs: Date.now() - startedAt,
+        errorType: failure?.name ?? "unknown",
+        errorCode: failure?.code ?? "unknown",
+      });
+      throw new HttpsError(
+        "internal",
+        "The image could not be prepared. Please try uploading it again.",
+      );
+    }
   },
 );
 export async function validateAsset(id: unknown, kind: string) {

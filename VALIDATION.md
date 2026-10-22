@@ -21,3 +21,9 @@ The expanded suite verifies 50% road discounts with full river surcharges, round
 `npm run test:connected-ui` covers real registration/sign-in, admin invitations, full-page submission, rejection with a reason, editing/resubmission, approval, then connected map/flag uploads and location entry on desktop/mobile. It uses only the isolated `demo-merging-sun` emulators. Public production checks create no accounts or characters.
 
 The deployment workflow checks the runtime's effective Storage permissions before publishing the new app. A missing bucket permission stops release before changing existing gameplay code or rules. `scripts/setup-storage-access.sh` grants only object access on this app's bucket to its custom runtime identity.
+
+## Map upload timeout repair — 22 October 2026
+
+Production logs identified two map uploads ending with HTTP 504 at the former 120-second deadline. Map preparation now reuses decoded pixel buffers, overlaps up to eight Storage writes, and permits one upload per function instance with a 300-second deadline. The browser allows 360 seconds and shows an upload-specific retry message on failure.
+
+The image integration check now uploads a detailed 3969 × 1814 JPEG larger than 2 MB, verifies high-resolution tiles contain image detail, and checks the edge tile. The connected browser check simulates a gateway timeout, verifies publishing stays disabled during processing and unlocks afterward, then successfully retries the upload without changing the published map until requested.

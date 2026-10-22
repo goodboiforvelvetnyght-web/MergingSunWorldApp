@@ -76,7 +76,15 @@ export function WorldAssetUpload({
               });
               if (active.current) latestChange.current(id, nativeZoom);
             } catch (err) {
-              setError(friendlyError(err));
+              const code = (err as { code?: string }).code;
+              setError(
+                code === "functions/deadline-exceeded"
+                  ? "Preparing this image took too long. Please try uploading it again."
+                  : code === "functions/internal" ||
+                      code === "functions/unavailable"
+                    ? "The image upload or processing did not finish. Please try again. If it keeps failing, report the image’s file size and format."
+                    : friendlyError(err),
+              );
             } finally {
               setBusy(false);
             }
@@ -86,7 +94,7 @@ export function WorldAssetUpload({
       {busy && (
         <p role="status">
           {kind === "map"
-            ? "Preparing map tiles… This may take a minute."
+            ? "Uploading artwork and preparing map tiles… Large maps may take several minutes. Keep this page open."
             : "Preparing emblem…"}
         </p>
       )}

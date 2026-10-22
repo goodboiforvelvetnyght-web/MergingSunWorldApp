@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import sharp from "sharp";
+import { randomBytes } from "node:crypto";
 import {
   getStorage,
   connectStorageEmulator,
@@ -332,18 +333,17 @@ export async function testWorldUpdate({
         `public/maps/${map}/overview.webp`,
       ])
         assert((await getBytes(ref(storage, path))).byteLength > 0);
-      const largeImage = `data:image/png;base64,${(
-        await sharp({
-          create: {
-            width: 2500,
-            height: 1875,
-            channels: 3,
-            background: "#aa7733",
-          },
-        })
-          .png()
-          .toBuffer()
-      ).toString("base64")}`;
+      // A detailed, multi-megabyte JPG exercises the path that timed out in production.
+      const detailedJpg = await sharp(randomBytes(3969 * 1814 * 3), {
+        raw: { width: 3969, height: 1814, channels: 3 },
+      })
+        .blur(1)
+        .jpeg({ quality: 88 })
+        .toBuffer();
+      assert(
+        detailedJpg.length > 2000000 && detailedJpg.length < 6 * 1024 * 1024,
+      );
+      const largeImage = `data:image/jpeg;base64,${detailedJpg.toString("base64")}`;
       const highResolution = await admin.call("uploadWorldAsset", {
         kind: "map",
         image: largeImage,
@@ -356,6 +356,15 @@ export async function testWorldUpdate({
           )
         ).byteLength > 0,
       );
+      const detailTile = Buffer.from(
+        await getBytes(
+          ref(storage, `public/maps/${highResolution.id}/tiles/4/8/6.webp`),
+        ),
+      );
+      const detailMeta = await sharp(detailTile).metadata();
+      assert.equal(detailMeta.width, 256);
+      assert.equal(detailMeta.height, 256);
+      assert((await sharp(detailTile).stats()).channels[0].stdev > 1);
       map = highResolution.id;
     },
   );

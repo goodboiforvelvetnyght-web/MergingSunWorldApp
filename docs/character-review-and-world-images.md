@@ -23,6 +23,8 @@ Kingdom emblems and names appear at wide zoom, shrink at middle zoom, and disapp
 
 World coordinates remain 2400 × 1800. Uploaded art is padded to 4:3 rather than distorted. Smaller maps use a tile pyramid through zoom 3 (2400 × 1800); larger originals use zoom 4 (up to 4800 × 3600). The client fetches only nearby tiles. Processing happens once during admin upload; no map image processing occurs during normal navigation. Emblems are WebP thumbnails within 256 × 256; portraits are private 512 × 512 WebP files.
 
+Map preparation decodes each zoom level once and writes at most eight tiles concurrently. Each backend instance processes one upload at a time with a five-minute deadline; the browser waits up to six minutes. Keep the editor open until its preview appears, then publish. The manual Firebase workflow has an **upload_diagnostics** option that reads recent upload errors and function limits without deploying; logs never intentionally include image contents.
+
 All image writes happen on the backend. Public Storage reads cover processed artwork and emblems only. Portrait objects have no public download tokens and deny direct SDK access even to their owners; authenticated callables enforce ownership, admin review, or current co-location. Firestore character documents retain their existing owner/admin read restrictions. Public character responses explicitly include only the allowed fields.
 
 Image paths are immutable and validated against a completed asset manifest before a world can publish them. Draft uploads do not replace the live world's selected artwork. Unreferenced uploads are retained rather than deleting images that might still belong to another draft or a world backup; periodic asset garbage collection is a later maintenance task.

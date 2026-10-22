@@ -24,22 +24,77 @@ export async function testConnectedWorldUpdate({
     .png()
     .toBuffer();
   // An existing approved resident is a fixture; all entering and inspection uses the real UI/backend.
-  await db
-    .doc(`characters/${owner.uid}`)
-    .set({
-      ...makeCharacter(
-        "Resident of the Commons",
-        "Keeper",
-        "A public resident history.",
-        DEFAULT_WORLD.locations[0],
-        DEFAULT_WORLD,
-      ),
-      incarnationId: crypto.randomUUID(),
-      realName: "Hidden Resident Real Name",
-      currentLocationId: "emberfall",
-      internalLocationId: commonsId("emberfall"),
-    });
+  await db.doc(`characters/${owner.uid}`).set({
+    ...makeCharacter(
+      "Resident of the Commons",
+      "Keeper",
+      "A public resident history.",
+      DEFAULT_WORLD.locations[0],
+      DEFAULT_WORLD,
+    ),
+    incarnationId: crypto.randomUUID(),
+    realName: "Hidden Resident Real Name",
+    currentLocationId: "emberfall",
+    internalLocationId: commonsId("emberfall"),
+  });
   await page.getByRole("button", { name: "Landscape", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Grid settings", exact: true })
+    .click();
+  await page.getByLabel("Grid offset X", { exact: true }).fill("1");
+  await expect(
+    page.getByRole("button", { name: "Publish world", exact: true }),
+  ).toBeEnabled();
+  // Both gateway timeouts and internal failures must allow a clean retry.
+  for (const [status, message] of [
+    [504, "Preparing this image took too long"],
+    [500, "The image upload or processing did not finish"],
+  ]) {
+    let finishTimedOutUpload;
+    const waitingUpload = new Promise((resolve) => {
+      finishTimedOutUpload = resolve;
+    });
+    await page.route("**/uploadWorldAsset", async (route) => {
+      await waitingUpload;
+      await route.fulfill({
+        status,
+        contentType: "text/plain",
+        body: "Gateway timeout",
+      });
+    });
+    await page.getByLabel("Upload map artwork", { exact: true }).setInputFiles({
+      name: "timeout.jpg",
+      mimeType: "image/jpeg",
+      buffer: bytes,
+    });
+    await expect(
+      page.getByText(
+        "Uploading artwork and preparing map tiles… Large maps may take several minutes. Keep this page open.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Publish world", exact: true }),
+    ).toBeDisabled();
+    finishTimedOutUpload();
+    await expect(page.getByRole("alert")).toContainText(message);
+    await expect(
+      page.getByLabel("Upload map artwork", { exact: true }),
+    ).toBeEnabled();
+    await expect(
+      page.getByRole("button", { name: "Publish world", exact: true }),
+    ).toBeEnabled();
+    assert(!(await db.doc("worlds/main").get()).data()?.mapAssetId);
+    await expect(page.getByLabel("Grid offset X", { exact: true })).toHaveValue(
+      "1",
+    );
+    await page.unroute("**/uploadWorldAsset");
+  }
+  await page
+    .getByRole("button", { name: "Undo map edit", exact: true })
+    .click();
+  await expect(page.getByLabel("Grid offset X", { exact: true })).toHaveValue(
+    "0",
+  );
   await page
     .getByLabel("Upload map artwork", { exact: true })
     .setInputFiles({ name: "world.png", mimeType: "image/png", buffer: bytes });
