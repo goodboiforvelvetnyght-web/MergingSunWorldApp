@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
-import { Modal } from "./Modal";
+import { EditorFormFrame } from "./EditorWorkspace";
 import { LoreEditor } from "./LoreEditor";
 import { type Location, type Kingdom } from "../../shared/world";
 import { readLocal, saveLocal } from "../useWorld";
 export default function LocationForm({
   location,
+  inline = false,
   scope,
   kingdoms,
   mapSize = { width: 2400, height: 1800 },
@@ -14,6 +15,7 @@ export default function LocationForm({
   onDelete,
 }: {
   location: Location;
+  inline?: boolean;
   scope: string;
   kingdoms: Kingdom[];
   mapSize?: { width: number; height: number };
@@ -47,11 +49,11 @@ export default function LocationForm({
     onClose();
   }
   return (
-    <Modal
+    <EditorFormFrame
+      inline={inline}
       title="Settlement details"
       subtitle="Place details and lore · Draft saved in this browser"
       onClose={onClose}
-      wide
     >
       <form onSubmit={submit} className="form-stack">
         <div className="form-row">
@@ -211,6 +213,6 @@ export default function LocationForm({
           )}
         </div>
       </form>
-    </Modal>
+    </EditorFormFrame>
   );
 }

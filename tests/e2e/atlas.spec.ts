@@ -88,7 +88,9 @@ test("editor saves lore and adding a river modifier supports undo", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "World editor", exact: true }).click();
   await page.locator('.location-marker[title="Thornwatch"]').click();
-  await page.getByRole("button", { name: "Edit place" }).click();
+  await page
+    .getByRole("button", { name: "Edit settlement / allegiance" })
+    .click();
   await page.getByLabel("Settlement name").fill("Thornwatch Haven");
   await page
     .getByRole("textbox", { name: "Location lore" })
@@ -98,7 +100,6 @@ test("editor saves lore and adding a river modifier supports undo", async ({
     page.getByRole("heading", { name: "Thornwatch Haven", exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Save local world" }).click();
-  await page.getByRole("button", { name: "Close location details" }).click();
   await page.getByRole("button", { name: "Landscape", exact: true }).click();
   await page.getByRole("button", { name: "Add river", exact: true }).click();
   const map = page.getByTestId("world-map");
@@ -190,58 +191,15 @@ test("mobile map, layers, sidebar, and account dialog are usable", async ({
   ).toBe(true);
 });
 
-test("touch terrain painting works on occupied tiles and can be erased", async ({
-  browser,
-  baseURL,
+test("world editor directs phone users to the desktop workspace", async ({
+  page,
 }) => {
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-  const page = await context.newPage();
-  await page.goto(baseURL!);
-  await page.getByRole("button", { name: "World editor", exact: true }).tap();
-  await page.getByRole("button", { name: "Landscape", exact: true }).tap();
-  await page.getByRole("button", { name: "Add river", exact: true }).tap();
-  await page.getByRole("button", { name: "Close sidebar" }).tap();
-  await expect(page.locator(".sidebar")).not.toBeInViewport();
-  const traveler = await page.locator(".traveler-marker").boundingBox();
-  await page.touchscreen.tap(
-    traveler!.x + traveler!.width / 2,
-    traveler!.y + traveler!.height / 2,
-  );
-  await page.getByRole("button", { name: "Open sidebar" }).tap();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "World editor", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "Undo map edit" }),
-  ).toBeEnabled();
-  await page.getByRole("button", { name: "Save local world" }).tap();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Object.values(
-          JSON.parse(localStorage.getItem("ms:world:v1")!).tiles,
-        ).some((t: any) => t.river),
-      ),
-    )
-    .toBe(true);
-  await page.getByRole("button", { name: "Erase river", exact: true }).tap();
-  await page.getByRole("button", { name: "Close sidebar" }).tap();
-  await expect(page.locator(".sidebar")).not.toBeInViewport();
-  await page.touchscreen.tap(
-    traveler!.x + traveler!.width / 2,
-    traveler!.y + traveler!.height / 2,
-  );
-  await page.getByRole("button", { name: "Open sidebar" }).tap();
-  await page.getByRole("button", { name: "Save local world" }).tap();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Object.values(
-          JSON.parse(localStorage.getItem("ms:world:v1")!).tiles,
-        ).every((t: any) => !t.river),
-      ),
-    )
-    .toBe(true);
-  await context.close();
+    page.getByRole("heading", { name: "World editor is a desktop workspace" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Return to player atlas" }).click();
+  await expect(page.getByTestId("world-map")).toBeVisible();
 });

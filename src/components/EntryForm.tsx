@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
-import { Modal } from "./Modal";
+import { EditorFormFrame } from "./EditorWorkspace";
 import { LoreEditor } from "./LoreEditor";
 import type { PlaceEntry } from "../../shared/world";
 
 export default function EntryForm({
   entry,
+  inline = false,
   settlementName,
   existing,
   onSave,
@@ -12,6 +13,7 @@ export default function EntryForm({
   onClose,
 }: {
   entry: PlaceEntry;
+  inline?: boolean;
   settlementName: string;
   existing: boolean;
   onSave: (entry: PlaceEntry) => void;
@@ -26,11 +28,11 @@ export default function EntryForm({
     onClose();
   }
   return (
-    <Modal
+    <EditorFormFrame
+      inline={inline}
       title={existing ? "Edit internal location" : "Add internal location"}
       subtitle={`Encyclopedia entry in ${settlementName}`}
       onClose={onClose}
-      wide
     >
       <form className="form-stack" onSubmit={submit}>
         <label>
@@ -108,6 +110,6 @@ export default function EntryForm({
           </div>
         )}
       </form>
-    </Modal>
+    </EditorFormFrame>
   );
 }

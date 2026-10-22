@@ -293,6 +293,54 @@ try {
     },
   );
   await check(
+    "publishing preserves spline anchors and rejects invalid curve metadata",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const curved = {
+        ...current,
+        territories: current.territories.map((k, i) =>
+          i === 0
+            ? {
+                ...k,
+                borderStyle: "smooth",
+                points: k.points.map((p, j) =>
+                  j === 0 ? { ...p, sharp: true } : p,
+                ),
+              }
+            : k,
+        ),
+      };
+      for (const invalid of [
+        { ...curved.territories[0], borderStyle: "bezier" },
+        {
+          ...curved.territories[0],
+          points: curved.territories[0].points.map((p, j) =>
+            j === 0 ? { ...p, sharp: "yes" } : p,
+          ),
+        },
+      ])
+        await assert.rejects(
+          admin.call("publishWorld", {
+            world: {
+              ...curved,
+              territories: [invalid, ...curved.territories.slice(1)],
+            },
+          }),
+          (e) => e.code === "functions/invalid-argument",
+        );
+      const published = await admin.call("publishWorld", { world: curved });
+      assert.equal(published.territories[0].borderStyle, "smooth");
+      assert.deepEqual(
+        published.territories[0].points,
+        curved.territories[0].points,
+      );
+      assert.deepEqual(
+        (await db.doc("worlds/main").get()).data().territories[0],
+        published.territories[0],
+      );
+    },
+  );
+  await check(
     "allegiance transfers preserve entries and do not enforce border containment",
     async () => {
       const current = (await db.doc("worlds/main").get()).data();

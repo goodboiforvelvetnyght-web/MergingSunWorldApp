@@ -387,7 +387,13 @@ function validateWorld(input: unknown): World {
       !Array.isArray(t.points) ||
       t.points.length < 3 ||
       t.points.length > 150 ||
-      !t.points.every((p) => point(p, bounds)) ||
+      !t.points.every(
+        (p) =>
+          point(p, bounds) &&
+          (p.sharp === undefined || typeof p.sharp === "boolean"),
+      ) ||
+      (t.borderStyle !== undefined &&
+        !["straight", "smooth"].includes(t.borderStyle)) ||
       (t.emblemPosition != null && !point(t.emblemPosition, bounds)) ||
       (t.emblemAssetId != null &&
         (typeof t.emblemAssetId !== "string" ||
@@ -402,7 +408,12 @@ function validateWorld(input: unknown): World {
       name: textField(t.name, "kingdom name", 80),
       color: t.color,
       lore: textField(t.lore, "kingdom lore", 60000, false),
-      points: t.points.map((p) => ({ x: p.x, y: p.y })),
+      points: t.points.map((p) => ({
+        x: p.x,
+        y: p.y,
+        ...(p.sharp !== undefined ? { sharp: p.sharp } : {}),
+      })),
+      ...(t.borderStyle ? { borderStyle: t.borderStyle } : {}),
       emblemAssetId: t.emblemAssetId ?? null,
       emblemPosition: t.emblemPosition ?? null,
     };

@@ -112,7 +112,7 @@ export function alignMapArtwork(
   }));
   next.territories = previous.territories.map((k) => ({
     ...k,
-    points: k.points.map((p) => transformPoint(p, transform)),
+    points: k.points.map((p) => ({ ...p, ...transformPoint(p, transform) })),
     ...(k.emblemPosition
       ? { emblemPosition: transformPoint(k.emblemPosition, transform) }
       : {}),

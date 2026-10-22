@@ -3187,3 +3187,394 @@ input[type="range"] {
   flex: 0 0 auto;
   margin: 0;
 }
+
+/* Desktop authoring workspace. Player layouts retain their existing map controls. */
+.editor-workspace {
+  grid-template-columns: 64px 236px minmax(380px, 1fr) 330px;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: #243443;
+}
+.editor-workspace > .rail {
+  grid-column: 1;
+  grid-row: 1 / -1;
+}
+.editor-workspace > .sidebar {
+  grid-column: 2;
+  grid-row: 2;
+  position: relative;
+  width: auto;
+  transform: none;
+  z-index: 10;
+  background: #edf1f4;
+  border-right: 1px solid #c3ccd3;
+}
+.editor-workspace > .main-panel {
+  grid-column: 3;
+  grid-row: 2;
+}
+.editor-workspace .sidebar-brand,
+.editor-workspace .sidebar-footer,
+.editor-workspace .editor-intro,
+.editor-workspace .editor-status,
+.editor-workspace .editor-categories,
+.editor-workspace .tool-grid,
+.editor-workspace .main-panel > .topbar,
+.editor-workspace .map-heading,
+.editor-workspace .map-credit,
+.editor-workspace .map-bottom-left,
+.editor-workspace .editing-banner,
+.editor-workspace .editor-original-status,
+.editor-workspace .map-tools [aria-label="Find my character"],
+.editor-workspace .editor-actions > .button.primary {
+  display: none;
+}
+.editor-workspace .sidebar-scroll {
+  padding: 14px 12px;
+}
+.editor-ribbon {
+  grid-column: 2 / -1;
+  grid-row: 1;
+  z-index: 110;
+  background: #263746;
+  color: #eef3f7;
+  border-bottom: 1px solid #15222e;
+  box-shadow: 0 3px 8px #14212b30;
+}
+.editor-ribbon-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 18px;
+  background: #1c2a37;
+}
+.editor-ribbon-title strong {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 1.2px;
+}
+.editor-ribbon-title strong span {
+  margin-left: 12px;
+  color: #dfb672;
+}
+.editor-ribbon-title small {
+  display: block;
+  margin-top: 5px;
+  color: #b4c3d0;
+  font-size: 10px;
+}
+.editor-save-actions,
+.editor-ribbon-tools,
+.editor-tool-group,
+.editor-ribbon-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.editor-ribbon button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 1px solid #516373;
+  border-radius: 4px;
+  padding: 8px 11px;
+  background: #324858;
+  color: #ecf1f4;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.editor-ribbon button:hover:not(:disabled) {
+  background: #486375;
+  border-color: #94b3ca;
+}
+.editor-ribbon button.active,
+.editor-ribbon button[aria-pressed="true"] {
+  background: #d9b16d;
+  color: #182d3a;
+  border-color: #eacb94;
+}
+.editor-ribbon button:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+.editor-ribbon .editor-publish {
+  background: #bb7a30;
+  border-color: #d99a50;
+  color: white;
+}
+.editor-ribbon-tools {
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.editor-tool-group {
+  border-left: 1px solid #647480;
+  padding-left: 8px;
+}
+.editor-ribbon-tabs {
+  padding-right: 4px;
+}
+.editor-ribbon-tabs button {
+  min-width: 75px;
+}
+.editor-properties {
+  grid-column: 4;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: #f7f8f9;
+  border-left: 1px solid #bac6cd;
+  z-index: 10;
+}
+.editor-properties > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 16px;
+  background: #e3e9ed;
+  border-bottom: 1px solid #cad3d9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #304758;
+}
+.editor-properties > header small {
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #526877;
+}
+#editor-properties-content {
+  overflow: auto;
+  min-height: 0;
+  padding: 16px;
+  flex: 1;
+  scrollbar-width: thin;
+}
+.editor-properties h2 {
+  font-family: "DM Sans", sans-serif;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.editor-properties h3 {
+  font-size: 14px;
+}
+.editor-properties .form-row {
+  flex-wrap: wrap;
+}
+.editor-properties .form-row > label {
+  flex: 1 1 100px;
+  min-width: 0;
+}
+.editor-properties .form-stack {
+  gap: 14px;
+}
+.editor-properties .button {
+  font-size: 11px;
+}
+.editor-properties .kingdom-card {
+  padding: 12px 9px;
+}
+.editor-properties .place-management-actions {
+  flex-wrap: wrap;
+}
+.editor-properties .info-note {
+  font-size: 11px;
+}
+.editor-properties .lore-editor {
+  min-width: 0;
+}
+.inline-editor-form > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.inline-editor-form > .fine-print {
+  margin-bottom: 15px;
+}
+.editor-hierarchy > header {
+  padding: 4px 4px 14px;
+  border-bottom: 1px solid #cbd4db;
+}
+.editor-hierarchy > header > span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #344b5e;
+  letter-spacing: 1px;
+}
+.editor-hierarchy > header > small {
+  display: block;
+  font-size: 10px;
+  margin-top: 7px;
+  color: #657888;
+}
+.editor-hierarchy details {
+  margin-top: 8px;
+}
+.editor-hierarchy summary {
+  color: #435969;
+  font-size: 11px;
+}
+.editor-hierarchy summary svg {
+  vertical-align: middle;
+  margin-right: 4px;
+}
+.editor-hierarchy button {
+  border-radius: 3px;
+  background: none;
+  color: #324c60;
+  font-size: 11px;
+  text-align: left;
+  padding: 8px 5px;
+  max-width: 180px;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
+}
+.editor-hierarchy button:hover {
+  background: #dbe5ec;
+}
+.editor-hierarchy button.selected {
+  background: #d4e2ec;
+  color: #153f5c;
+  font-weight: 700;
+}
+.editor-hierarchy button small {
+  display: block;
+  color: #788896;
+  font-size: 9px;
+  margin-top: 3px;
+}
+.editor-tree-children {
+  margin-left: 12px;
+  padding-left: 6px;
+  border-left: 1px solid #cbd5dc;
+}
+.editor-cad-status {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 9px 13px;
+  min-height: 34px;
+  background: #263746;
+  color: #d9e5ee;
+  font:
+    10px "DM Sans",
+    sans-serif;
+}
+.editor-cad-status > span:first-child {
+  color: #edc787;
+  text-transform: uppercase;
+}
+.editor-cad-status > span:last-child {
+  margin-left: auto;
+}
+.editor-desktop-note {
+  display: none;
+}
+.border-handle {
+  display: grid;
+  place-items: center;
+  border: 2px solid #7c4b10;
+  background: #fff5d9;
+  color: #473018;
+  border-radius: 50%;
+  cursor: grab;
+  box-shadow: 0 1px 5px #0006;
+}
+.border-handle span {
+  font:
+    bold 9px "DM Sans",
+    sans-serif;
+  pointer-events: none;
+}
+.border-handle.sharp {
+  border-radius: 2px;
+}
+.border-handle.selected {
+  background: #aee7ff;
+  border-color: #0c5b83;
+  box-shadow: 0 0 0 3px #c8f0ff88;
+  z-index: 2200 !important;
+}
+.middle-panning,
+.middle-panning * {
+  cursor: grabbing !important;
+}
+.map-context-menu {
+  position: absolute;
+  z-index: 2000;
+  width: 225px;
+  padding: 6px;
+  border: 1px solid #526d80;
+  background: #223544;
+  box-shadow: 0 8px 26px #0005;
+  color: #eff5fa;
+  border-radius: 5px;
+}
+.map-context-menu strong {
+  display: block;
+  padding: 8px;
+  font-size: 11px;
+  color: #e9c58d;
+}
+.map-context-menu button {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: 9px;
+  font-size: 12px;
+  background: transparent;
+  color: #edf5fa;
+  border-radius: 3px;
+}
+.map-context-menu button:hover:not(:disabled),
+.map-context-menu button:focus-visible {
+  background: #426079;
+}
+.map-context-menu button:disabled {
+  color: #778d9d;
+  cursor: not-allowed;
+}
+@media (max-width: 1099px) {
+  .editor-workspace {
+    display: block;
+  }
+  .editor-workspace > .sidebar,
+  .editor-workspace > .main-panel,
+  .editor-workspace > .editor-ribbon,
+  .editor-workspace > .editor-properties {
+    display: none;
+  }
+  .editor-workspace > .rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 64px;
+    height: 100%;
+  }
+  .editor-desktop-note {
+    position: absolute;
+    inset: 25px 20px 25px 84px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .editor-desktop-note h1 {
+    font-size: 30px;
+  }
+  .editor-desktop-note p {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+}

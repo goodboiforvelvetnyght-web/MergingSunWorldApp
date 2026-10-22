@@ -29,13 +29,17 @@ In restricted cloud workspaces, pass `--cache /workspace/.npm-cache` to npm inst
 - **Landscape** editor with terrain brushes (plains, forest, mountain, water), river and erase-river brushes, three brush sizes, undo/redo for painting and location/boundary creation.
 - Location placement, position editing, rich-text lore, headings, lists, quotes, HTTPS images, and links. Lore is sanitized before display.
 - **Places** editor: kingdom cards → settlements → internal encyclopedia entries, with rich lore and explicit allegiance transfers.
-- Kingdom borders are part of the kingdom. Edit coordinates or draw a replacement; borders cannot be deleted separately. No settlement/border containment calculation is performed.
+- Desktop world editor with a prominent tool ribbon, world hierarchy, properties panel, middle-button panning, right-click menus, and local Save draft separate from Publish world.
+- Kingdom borders use optional splines through draggable anchors, with sharp corners, point insertion/deletion, hex snapping and undo/redo. Existing borders stay straight until changed; borders cannot be deleted separately. No settlement/border containment calculation is performed.
+- Road overlays connect smoothly through road tiles while retaining hex-based route costs.
 - Confirmed kingdom deletion removes its border, settlements, and their internal entries. Settlement deletion removes its entries. Characters stay in place and references to deleted places are cleared.
 - Locally autosaved world and lore drafts; explicit world publication; world JSON export. The local preview can restore its previous saved world into a draft. Connected world publication keeps server-side version backups.
 - Firebase email/password sign-up, sign-in, password reset, and server-managed admin roles with expiring, single-use invitations.
 - Firebase Storage uploads for tiled map artwork, private portraits, and kingdom flags/coats of arms, with draft preview and zoom-aware heraldry.
 - Settlement population counts, enterable internal locations, and server-enforced shared-room character profiles.
-- Responsive desktop and phone layouts, keyboard-accessible controls, and a `/` shortcut for search.
+- Responsive desktop and phone player layouts, a PC-focused world editor, keyboard-accessible controls, and a `/` shortcut for search.
+
+See [the desktop world editor guide](docs/world-editor.md) for mouse controls, spline editing, drafts and publication.
 
 ## Places and existing world data
 

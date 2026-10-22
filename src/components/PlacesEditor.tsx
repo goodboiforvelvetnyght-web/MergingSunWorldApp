@@ -1,6 +1,6 @@
 import { WorldAssetUpload } from "./WorldAssets";
 import { emblemUrl } from "../../shared/assets";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import {
   Castle,
   ChevronRight,
@@ -17,7 +17,7 @@ import {
   type Kingdom,
   type Location,
   type PlaceEntry,
-  type Point,
+  type BorderPoint,
 } from "../../shared/world";
 import { Modal } from "./Modal";
 const LoreEditor = lazy(() =>
@@ -41,6 +41,9 @@ export function PlacesEditor({
   onDraw,
   onSaveKingdom,
   onCancelKingdom,
+  selection,
+  onSelection,
+  onBorderStyle,
 }: {
   world: World;
   demo?: boolean;
@@ -51,18 +54,41 @@ export function PlacesEditor({
   kingdomEdit: Kingdom | null;
   onEditKingdom: (k: Kingdom) => void;
   onKingdomChange: (k: Kingdom) => void;
-  borderPoints: Point[];
-  onBorderPoints: (p: Point[]) => void;
+  borderPoints: BorderPoint[];
+  onBorderPoints: (p: BorderPoint[]) => void;
   drawing: boolean;
   onDraw: () => void;
   onSaveKingdom: () => void;
   onCancelKingdom: () => void;
+  selection?: {
+    kingdomId: string | null;
+    settlementId: string | null;
+    entryId?: string | null;
+  };
+  onSelection?: (value: {
+    kingdomId: string | null;
+    settlementId: string | null;
+  }) => void;
+  onBorderStyle?: (style: "straight" | "smooth") => void;
 }) {
   const [kingdomId, setKingdomId] = useState<string | null>(null);
   const [settlementId, setSettlementId] = useState<string | null>(null);
   const [entryEdit, setEntryEdit] = useState<PlaceEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [assetBusy, setAssetBusy] = useState(false);
+  useEffect(() => {
+    if (!selection) return;
+    setKingdomId(selection.kingdomId);
+    setSettlementId(selection.settlementId);
+    if (selection.entryId) {
+      const place = world.locations.find(
+        (l) => l.id === selection.settlementId,
+      );
+      setEntryEdit(
+        place?.entries.find((e) => e.id === selection.entryId) ?? null,
+      );
+    } else setEntryEdit(null);
+  }, [selection]);
   const kingdom = world.territories.find((k) => k.id === kingdomId);
   const settlement = world.locations.find(
     (l) => l.id === settlementId && l.kingdomId === kingdom?.id,
@@ -176,13 +202,26 @@ export function PlacesEditor({
             settlement allegiance is assigned separately.
           </span>
         </div>
+        <label>
+          Border shape
+          <select
+            aria-label="Border shape"
+            value={kingdomEdit.borderStyle ?? "straight"}
+            onChange={(e) =>
+              onBorderStyle?.(e.target.value as "straight" | "smooth")
+            }
+          >
+            <option value="smooth">Spline through points</option>
+            <option value="straight">Straight segments</option>
+          </select>
+        </label>
         <button type="button" className="button secondary" onClick={onDraw}>
           {drawing ? "Restart border drawing" : "Draw replacement border"}
         </button>
         {drawing && (
           <p role="status">
-            Click the map to add border points. On a phone, close the sidebar to
-            reach the map, then reopen it to save.
+            Left-click to add points. Drag any point to reshape the border. Hold
+            the middle mouse button to pan; right-click for point actions.
           </p>
         )}
         <p className="fine-print">
@@ -317,6 +356,7 @@ export function PlacesEditor({
                 color: "#a77845",
                 lore: "",
                 points: [],
+                borderStyle: "smooth",
               })
             }
           >
@@ -336,6 +376,7 @@ export function PlacesEditor({
                 onClick={() => {
                   setKingdomId(k.id);
                   setSettlementId(null);
+                  onSelection?.({ kingdomId: k.id, settlementId: null });
                 }}
               >
                 <span className="kingdom-emblem" style={{ color: k.color }}>
@@ -412,7 +453,10 @@ export function PlacesEditor({
               <button
                 className="kingdom-card"
                 key={l.id}
-                onClick={() => setSettlementId(l.id)}
+                onClick={() => {
+                  setSettlementId(l.id);
+                  onSelection?.({ kingdomId: kingdom.id, settlementId: l.id });
+                }}
               >
                 <Castle size={20} />
                 <span>
@@ -561,6 +605,7 @@ export function PlacesEditor({
       {entryEdit && settlement && (
         <Suspense fallback={<p>Opening entry editor…</p>}>
           <EntryForm
+            inline
             key={entryEdit.id}
             entry={entryEdit}
             settlementName={settlement.name}

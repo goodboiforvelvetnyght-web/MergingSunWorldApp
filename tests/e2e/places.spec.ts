@@ -37,12 +37,15 @@ test("kingdom-first navigation, encyclopedia entries, allegiance and cascading d
     .click();
   await page.getByLabel("Allegiance", { exact: true }).selectOption("coast");
   await page.getByRole("button", { name: "Save to world draft" }).click();
-  await page.getByRole("button", { name: "Close location details" }).click();
   await expect(
     page
       .locator(".places-editor .kingdom-card")
       .filter({ hasText: "Emberfall" }),
   ).toHaveCount(0);
+  await page
+    .getByRole("region", { name: "World hierarchy" })
+    .getByRole("button", { name: "The Sunward Reach", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Delete kingdom", exact: true })
     .click();
@@ -155,7 +158,6 @@ test("create and edit a kingdom border, then add a settlement outside that borde
   await page.getByLabel("Map X", { exact: true }).fill("1090");
   await page.getByLabel("Map Y", { exact: true }).fill("945");
   await page.getByRole("button", { name: "Save to world draft" }).click();
-  await page.getByRole("button", { name: "Close location details" }).click();
   await page.getByRole("button", { name: "Save local world" }).click();
   const saved = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("ms:world:v1")!),
@@ -167,10 +169,8 @@ test("create and edit a kingdom border, then add a settlement outside that borde
   ).toMatchObject({ kingdomId: kingdom.id, kind: "village", x: 1090, y: 945 });
 });
 
-test("mobile places hierarchy and editing an internal entry", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+test("desktop hierarchy and editing an internal entry", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await openPlaces(page);
   await page
     .locator(".kingdom-card")

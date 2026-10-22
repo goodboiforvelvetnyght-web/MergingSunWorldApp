@@ -1,10 +1,15 @@
+import {
+  borderSegments,
+  flattenSegments,
+  smoothRoadPaths,
+  closestBorderSegment,
+} from "../../shared/curves";
 import { mapTileUrl, emblemUrl } from "../../shared/assets";
 import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   allHexes,
-  neighbors,
   inBounds,
   center,
   corners,
@@ -15,6 +20,7 @@ import {
   worldSize,
   type World,
   type Point,
+  type BorderPoint,
   type Hex,
   type Character,
   type Route,
@@ -33,7 +39,8 @@ export type EditorTool =
   | "road"
   | "erase-road"
   | "location"
-  | "border";
+  | "border"
+  | "border-point";
 type Props = {
   world: World;
   population?: Record<string, number>;
@@ -49,7 +56,29 @@ type Props = {
   labels: boolean;
   editor: boolean;
   tool: EditorTool;
-  draftBorder: Point[];
+  draftBorder: BorderPoint[];
+  borderEditing?: boolean;
+  borderStyle?: "straight" | "smooth";
+  selectedPoint?: number | null;
+  snap?: boolean;
+  onPointSelect?: (index: number | null) => void;
+  onBorderChange?: (points: BorderPoint[]) => void;
+  onBorderStroke?: () => void;
+  onBorderAction?: (
+    action: "insert" | "delete" | "sharp",
+    index: number,
+    point?: Point,
+  ) => void;
+  onEditBorder?: (
+    id: string,
+    insertion?: { index: number; point: Point },
+  ) => void;
+  onTool?: (tool: EditorTool) => void;
+  onCursor?: (point: Point) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onSelect: (h: Hex) => void;
   onLocation: (id: string) => void;
   onPaint: (h: Hex) => void;
@@ -72,6 +101,28 @@ export function WorldMap(props: Props) {
     latest = useRef(props),
     layers = useRef<Record<string, L.LayerGroup>>({});
   const [zoom, setZoom] = useState(1.5);
+  const [context, setContext] = useState<{
+    x: number;
+    y: number;
+    point: Point;
+    vertex?: number;
+    segment?: number;
+    kingdom?: string;
+    location?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!context) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!(
+        event.target instanceof Element &&
+        event.target.closest(".map-context-menu")
+      ))
+        setContext(null);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [context]);
+  const draggingPoint = useRef<number | null>(null);
   latest.current = props;
   const ll = (p: Point) => L.latLng(-p.y / 8, p.x / 8);
   useEffect(() => {
@@ -106,6 +157,7 @@ export function WorldMap(props: Props) {
       "character",
       "selection",
       "drawing",
+      "handles",
     ])
       layers.current[name] = L.layerGroup().addTo(m);
     let painting = false,
@@ -130,7 +182,23 @@ export function WorldMap(props: Props) {
         p.onPaint(h);
       }
     };
+    let middle: { x: number; y: number } | null = null;
+    let ignoreClickUntil = 0,
+      cursorFrame = 0;
+    const uiTarget = (target: EventTarget | null) =>
+      target instanceof Element && !!target.closest("[data-map-ui]");
     const down = (e: PointerEvent) => {
+      if (uiTarget(e.target)) return;
+      if (latest.current.editor && e.button === 1) {
+        e.preventDefault();
+        e.stopPropagation();
+        setContext(null);
+        middle = { x: e.clientX, y: e.clientY };
+        element.setPointerCapture(e.pointerId);
+        element.classList.add("middle-panning");
+        return;
+      }
+      if (e.button === 0) setContext(null);
       if (!isBrush() || !e.isPrimary || e.button !== 0) return;
       e.preventDefault();
       painting = true;
@@ -140,27 +208,117 @@ export function WorldMap(props: Props) {
       paintPointer(e);
     };
     const move = (e: PointerEvent) => {
+      if (latest.current.editor && !cursorFrame)
+        cursorFrame = requestAnimationFrame(() => {
+          cursorFrame = 0;
+          const latlng = m.mouseEventToLatLng(e);
+          latest.current.onCursor?.({ x: latlng.lng * 8, y: -latlng.lat * 8 });
+        });
+      if (middle) {
+        e.preventDefault();
+        m.panBy([middle.x - e.clientX, middle.y - e.clientY], {
+          animate: false,
+        });
+        middle = { x: e.clientX, y: e.clientY };
+        return;
+      }
       if (painting && e.isPrimary) {
         e.preventDefault();
         paintPointer(e);
       }
     };
     const stop = (e: PointerEvent) => {
+      if (middle || painting) ignoreClickUntil = Date.now() + 100;
+      middle = null;
+      element.classList.remove("middle-panning");
       painting = false;
       if (element.hasPointerCapture(e.pointerId))
         element.releasePointerCapture(e.pointerId);
     };
+    const contextMenu = (e: MouseEvent) => {
+      const p = latest.current;
+      if (!p.editor || uiTarget(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const latlng = m.mouseEventToLatLng(e),
+        point = { x: latlng.lng * 8, y: -latlng.lat * 8 };
+      const rect = element.getBoundingClientRect(),
+        hit = (11 * 8) / 2 ** m.getZoom();
+      let vertex: number | undefined,
+        segment: number | undefined,
+        kingdom: string | undefined,
+        location: string | undefined;
+      let insertion = point;
+      if (p.borderEditing) {
+        const i = p.draftBorder.findIndex(
+          (v) => Math.hypot(v.x - point.x, v.y - point.y) < hit,
+        );
+        if (i >= 0) {
+          vertex = i;
+          p.onPointSelect?.(i);
+        } else {
+          const close = closestBorderSegment(
+            point,
+            borderSegments(p.draftBorder, p.borderStyle, worldSize(p.world)),
+          );
+          if (close.distance <= hit) {
+            segment = close.index;
+            insertion = close.point;
+          }
+        }
+      } else {
+        for (const k of p.world.territories) {
+          const close = closestBorderSegment(
+            point,
+            borderSegments(k.points, k.borderStyle, worldSize(p.world)),
+          );
+          if (close.distance <= hit) {
+            kingdom = k.id;
+            segment = close.index;
+            insertion = close.point;
+            break;
+          }
+        }
+        location = p.world.locations.find(
+          (l) => Math.hypot(l.x - point.x, l.y - point.y) < hit,
+        )?.id;
+      }
+      setContext({
+        x: Math.max(4, Math.min(rect.width - 235, e.clientX - rect.left)),
+        y: Math.max(4, Math.min(rect.height - 270, e.clientY - rect.top)),
+        point: insertion,
+        vertex,
+        segment,
+        kingdom,
+        location,
+      });
+    };
+    const auxClick = (e: MouseEvent) => {
+      if (latest.current.editor && e.button === 1) e.preventDefault();
+    };
+    const escapeMenu = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContext(null);
+    };
+    element.addEventListener("contextmenu", contextMenu);
+    element.addEventListener("auxclick", auxClick);
+    window.addEventListener("keydown", escapeMenu);
     element.addEventListener("pointerdown", down);
     element.addEventListener("pointermove", move);
     element.addEventListener("pointerup", stop);
     element.addEventListener("pointercancel", stop);
     m.on("click", (e: L.LeafletMouseEvent) => {
+      if (Date.now() < ignoreClickUntil || uiTarget(e.originalEvent?.target))
+        return;
       const p = latest.current,
         point = getPoint(e);
       const { width, height } = worldSize(p.world);
       if (point.x < 0 || point.y < 0 || point.x > width || point.y > height)
         return;
       if (p.editor) {
+        if (p.tool === "border-point") {
+          p.onPointSelect?.(null);
+          return;
+        }
         if (p.tool === "location") {
           p.onPlace(point);
           return;
@@ -216,6 +374,10 @@ export function WorldMap(props: Props) {
     });
     return () => {
       ro.disconnect();
+      cancelAnimationFrame(cursorFrame);
+      element.removeEventListener("contextmenu", contextMenu);
+      element.removeEventListener("auxclick", auxClick);
+      window.removeEventListener("keydown", escapeMenu);
       element.removeEventListener("pointerdown", down);
       element.removeEventListener("pointermove", move);
       element.removeEventListener("pointerup", stop);
@@ -320,21 +482,27 @@ export function WorldMap(props: Props) {
     const layer = layers.current.grid;
     if (!layer) return;
     layer.clearLayers();
-    if (!props.grid && !props.terrain && !props.editor) return;
+    const showTerrain =
+      props.terrain ||
+      (props.editor &&
+        ["terrain", "river", "erase-river", "road", "erase-road"].includes(
+          props.tool,
+        ));
+    if (!props.grid && !showTerrain) return;
     for (const h of allHexes(props.world)) {
       const t = tileAt(h, props.world);
       const painted = !!props.world.tiles[key(h)];
       L.polygon(corners(h, props.world).map(ll), {
-        stroke: props.grid || props.editor,
+        stroke: props.grid,
         color: "#536952",
         weight: 0.65,
         opacity: 0.32,
-        fill: props.terrain || props.editor || painted,
+        fill: showTerrain || (!props.editor && painted),
         fillColor: TERRAIN_COLORS[t.terrain],
-        fillOpacity: props.terrain || props.editor ? 0.3 : painted ? 0.25 : 0,
+        fillOpacity: showTerrain ? 0.3 : !props.editor && painted ? 0.25 : 0,
         interactive: false,
       }).addTo(layer);
-      if (t.river && (props.terrain || props.editor || props.grid)) {
+      if (t.river && (showTerrain || props.grid)) {
         const p = center(h, props.world);
         L.polyline(
           [
@@ -347,28 +515,33 @@ export function WorldMap(props: Props) {
         ).addTo(layer);
       }
     }
-  }, [props.world, props.grid, props.terrain, props.editor]);
+  }, [props.world, props.grid, props.terrain, props.editor, props.tool]);
   useEffect(() => {
     const layer = layers.current.territories;
     if (!layer) return;
     layer.clearLayers();
     if (props.borders || props.editor)
       for (const t of props.world.territories)
-        L.polygon(t.points.map(ll), {
-          color: t.color,
-          weight: t.id === props.selectedKingdomId ? 4 : 2,
-          dashArray: "7 6",
-          fillColor: t.color,
-          fillOpacity:
-            t.id === props.selectedKingdomId
-              ? 0.28
-              : props.onKingdom
-                ? 0.15
-                : 0.07,
-          interactive:
-            !!props.onKingdom && !!props.fitWholeWorld && !props.editor,
-          bubblingMouseEvents: false,
-        })
+        L.polygon(
+          flattenSegments(
+            borderSegments(t.points, t.borderStyle, worldSize(props.world)),
+          ).map(ll),
+          {
+            color: t.color,
+            weight: t.id === props.selectedKingdomId ? 4 : 2,
+            dashArray: "7 6",
+            fillColor: t.color,
+            fillOpacity:
+              t.id === props.selectedKingdomId
+                ? 0.28
+                : props.onKingdom
+                  ? 0.15
+                  : 0.07,
+            interactive:
+              !!props.onKingdom && !!props.fitWholeWorld && !props.editor,
+            bubblingMouseEvents: false,
+          },
+        )
           .on("click", () => latest.current.onKingdom?.(t.id))
           .bindTooltip(esc(t.name))
           .addTo(layer);
@@ -384,24 +557,7 @@ export function WorldMap(props: Props) {
     const layer = layers.current.roads;
     if (!layer) return;
     layer.clearLayers();
-    const segments: L.LatLng[][] = [];
-    for (const [id, tile] of Object.entries(props.world.tiles)) {
-      if (!tile.road || tile.terrain === "water") continue;
-      const [q, r] = id.split(",").map(Number),
-        h = { q, r },
-        p = center(h, props.world);
-      if (!inBounds(h, props.world)) continue;
-      const links = neighbors(h).filter(
-        (n) =>
-          inBounds(n, props.world) &&
-          tileAt(n, props.world).road &&
-          tileAt(n, props.world).terrain !== "water",
-      );
-      if (!links.length)
-        segments.push([ll({ x: p.x - 9, y: p.y }), ll({ x: p.x + 9, y: p.y })]);
-      for (const n of links)
-        if (key(n) > id) segments.push([ll(p), ll(center(n, props.world))]);
-    }
+    const segments = smoothRoadPaths(props.world).map((path) => path.map(ll));
     // Batch the graph into two canvas paths so a large road network stays cheap to render.
     if (segments.length) {
       L.polyline(segments, {
@@ -508,22 +664,97 @@ export function WorldMap(props: Props) {
     const layer = layers.current.drawing;
     if (!layer) return;
     layer.clearLayers();
-    if (props.draftBorder.length)
-      L.polyline(props.draftBorder.map(ll), {
-        color: "#a76237",
-        weight: 3,
-        dashArray: "5 5",
-        interactive: false,
+    if (props.draftBorder.length > 1) {
+      const path = flattenSegments(
+        borderSegments(
+          props.draftBorder,
+          props.borderStyle,
+          worldSize(props.world),
+        ),
+      ).map(ll);
+      (props.draftBorder.length >= 3
+        ? L.polygon(path, { fillOpacity: 0.08 })
+        : L.polyline(path)
+      )
+        .setStyle({
+          color: "#e2ac50",
+          weight: 3,
+          dashArray: props.tool === "border" ? "5 5" : undefined,
+          interactive: false,
+        })
+        .addTo(layer);
+    }
+  }, [
+    props.draftBorder,
+    props.borderStyle,
+    props.tool,
+    props.world.mapWidth,
+    props.world.mapHeight,
+  ]);
+  useEffect(() => {
+    const layer = layers.current.handles;
+    if (!layer || draggingPoint.current !== null) return;
+    layer.clearLayers();
+    if (!props.editor || !props.borderEditing) return;
+    for (const [i, p] of props.draftBorder.entries()) {
+      const marker = L.marker(ll(p), {
+        icon: L.divIcon({
+          className: `border-handle ${props.selectedPoint === i ? "selected" : ""} ${p.sharp ? "sharp" : ""}`,
+          html: `<span>${i + 1}</span>`,
+          iconSize: [18, 18],
+          iconAnchor: [9, 9],
+        }),
+        draggable: true,
+        keyboard: true,
+        title: `Border point ${i + 1}`,
+        bubblingMouseEvents: false,
+        zIndexOffset: 2000,
       }).addTo(layer);
-    for (const p of props.draftBorder)
-      L.circleMarker(ll(p), {
-        radius: 4,
-        color: "#fff",
-        fillColor: "#a76237",
-        fillOpacity: 1,
-        interactive: false,
-      }).addTo(layer);
-  }, [props.draftBorder]);
+      const position = () => {
+        const current = latest.current,
+          { width, height } = worldSize(current.world),
+          latlng = marker.getLatLng();
+        let point = {
+          x: Math.max(0, Math.min(width, latlng.lng * 8)),
+          y: Math.max(0, Math.min(height, -latlng.lat * 8)),
+        };
+        if (current.snap) {
+          const snapped = center(hexAt(point, current.world), current.world);
+          if (
+            snapped.x >= 0 &&
+            snapped.x <= width &&
+            snapped.y >= 0 &&
+            snapped.y <= height
+          )
+            point = snapped;
+        }
+        marker.setLatLng(ll(point));
+        current.onBorderChange?.(
+          current.draftBorder.map((v, j) => (j === i ? { ...v, ...point } : v)),
+        );
+      };
+      marker.on("click", () => latest.current.onPointSelect?.(i));
+      marker.on("dragstart", () => {
+        draggingPoint.current = i;
+        latest.current.onBorderStroke?.();
+        latest.current.onPointSelect?.(i);
+      });
+      marker.on("drag", position);
+      marker.on("dragend", () => {
+        draggingPoint.current = null;
+        position();
+      });
+    }
+  }, [
+    props.draftBorder,
+    props.selectedPoint,
+    props.borderEditing,
+    props.editor,
+  ]);
+  const menuAction = (action: () => void) => {
+    setContext(null);
+    action();
+  };
   return (
     <div
       className="map-canvas"
@@ -531,6 +762,157 @@ export function WorldMap(props: Props) {
       aria-label="Interactive world map"
       data-testid="world-map"
       data-map-zoom={zoom}
-    />
+    >
+      {context && props.editor && (
+        <div
+          data-map-ui
+          className="map-context-menu"
+          role="menu"
+          aria-label="Map context menu"
+          style={{ left: context.x, top: context.y }}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <strong>
+            {context.vertex !== undefined
+              ? `Border point ${context.vertex + 1}`
+              : context.kingdom
+                ? "Kingdom border"
+                : "Map actions"}
+          </strong>
+          {context.vertex !== undefined && (
+            <>
+              <button
+                role="menuitem"
+                onClick={() =>
+                  menuAction(() =>
+                    props.onBorderAction?.("sharp", context.vertex!),
+                  )
+                }
+              >
+                {props.draftBorder[context.vertex]?.sharp
+                  ? "Make smooth point"
+                  : "Make sharp corner"}
+              </button>
+              <button
+                role="menuitem"
+                disabled={props.draftBorder.length <= 3}
+                onClick={() =>
+                  menuAction(() =>
+                    props.onBorderAction?.("delete", context.vertex!),
+                  )
+                }
+              >
+                Delete point
+              </button>
+              <button
+                role="menuitem"
+                disabled={props.draftBorder.length >= 150}
+                onClick={() =>
+                  menuAction(() => {
+                    const segment = borderSegments(
+                      props.draftBorder,
+                      props.borderStyle,
+                      worldSize(props.world),
+                    )[context.vertex!];
+                    props.onBorderAction?.(
+                      "insert",
+                      context.vertex!,
+                      segment?.[Math.floor(segment.length / 2)] ??
+                        context.point,
+                    );
+                  })
+                }
+              >
+                Insert point after
+              </button>
+            </>
+          )}
+          {context.segment !== undefined && context.vertex === undefined && (
+            <button
+              role="menuitem"
+              disabled={props.draftBorder.length >= 150 && props.borderEditing}
+              onClick={() =>
+                menuAction(() =>
+                  props.borderEditing
+                    ? props.onBorderAction?.(
+                        "insert",
+                        context.segment!,
+                        context.point,
+                      )
+                    : context.kingdom &&
+                      props.onEditBorder?.(context.kingdom, {
+                        index: context.segment!,
+                        point: context.point,
+                      }),
+                )
+              }
+            >
+              Insert point here
+            </button>
+          )}
+          {context.kingdom && (
+            <button
+              role="menuitem"
+              onClick={() =>
+                menuAction(() => props.onEditBorder?.(context.kingdom!))
+              }
+            >
+              Edit kingdom border
+            </button>
+          )}
+          {context.location && (
+            <button
+              role="menuitem"
+              onClick={() =>
+                menuAction(() => props.onLocation(context.location!))
+              }
+            >
+              Select settlement
+            </button>
+          )}
+          <button
+            role="menuitem"
+            onClick={() =>
+              menuAction(() =>
+                props.onTool?.(props.borderEditing ? "border-point" : "pan"),
+              )
+            }
+          >
+            {props.borderEditing ? "Select / move points" : "Navigate"}
+          </button>
+          <button
+            role="menuitem"
+            disabled={!props.canUndo}
+            onClick={() => menuAction(() => props.onUndo?.())}
+          >
+            Undo
+          </button>
+          <button
+            role="menuitem"
+            disabled={!props.canRedo}
+            onClick={() => menuAction(() => props.onRedo?.())}
+          >
+            Redo
+          </button>
+          <button
+            role="menuitem"
+            onClick={() =>
+              menuAction(() => {
+                const { width, height } = worldSize(props.world);
+                map.current?.fitBounds(
+                  L.latLngBounds(
+                    ll({ x: 0, y: height }),
+                    ll({ x: width, y: 0 }),
+                  ),
+                  { padding: [20, 20] },
+                );
+              })
+            }
+          >
+            Fit entire world
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

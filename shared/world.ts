@@ -10,6 +10,7 @@ import {
 export { WIDTH, HEIGHT };
 export type Terrain = "plains" | "forest" | "mountain" | "water";
 export type Point = { x: number; y: number };
+export type BorderPoint = Point & { sharp?: boolean };
 export type Hex = { q: number; r: number };
 export type Tile = { terrain: Terrain; river: boolean; road?: boolean };
 export type PlaceEntry = {
@@ -36,7 +37,8 @@ export type Kingdom = {
   name: string;
   color: string;
   lore: string;
-  points: Point[];
+  points: BorderPoint[];
+  borderStyle?: "straight" | "smooth";
   emblemAssetId?: string | null;
   emblemPosition?: Point | null;
 };

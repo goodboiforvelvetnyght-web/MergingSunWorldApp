@@ -33,3 +33,11 @@ The image integration check now uploads a detailed 3969 × 1814 JPEG larger than
 The unit suite now has 24 checks, including uniform terrain/place/grid transforms, unchanged route energy, equal-aspect artwork replacement, legacy unpadding, and complete hex enumeration with translated grids and portrait bounds. Firebase integration adds five checks for private chunk tickets and originals, a JPEG over 6 MiB at the full 8192-pixel edge, native zoom-5 tiles, upload idempotency, invalid dimensions and checksums, atomic character/population migration, restoration guards and orphaned origins. The 31 prior integration checks remain.
 
 The connected browser suite uses a detailed 3969 × 1814 JPEG, exercises upload/processing progress, simulated 504 and 500 responses, reselect-to-resume, draft preservation, a visual alignment preview, publication and shared-room access after coordinate migration. Production smoke checks include authorization on all three new upload callables and create no users or world content.
+
+## Desktop editor and interpolated borders — 22 October 2026
+
+The unit suite now has 29 tests. New geometry checks cover anchor interpolation, straight-border compatibility, sharp corners, duplicate/edge points, curve hit testing, preservation during map alignment and road graph tracing through chains, branches and loops. Firebase integration now has 37 checks, including persistence of spline style/sharp metadata and rejection of invalid metadata.
+
+The production browser suite has 19 tests. New checks exercise multi-step point dragging as one undo action, redo, text-field shortcut isolation, right-click corner changes, segment insertion, minimum closed-border size, middle-button panning during drawing, wheel zoom without geometry changes, local border-form recovery and separate publication. Editor tests run on desktop; player creation, map and location flows retain mobile checks. The connected browser and Auth suites continue to run against isolated emulators before release.
+
+No production world content is changed by deploying this UI. Existing borders retain their straight appearance until an admin selects a smooth border and publishes it. Road smoothing changes only rendering; terrain, river and energy calculations remain authoritative on the hex grid.
