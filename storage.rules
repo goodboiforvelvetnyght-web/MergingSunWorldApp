@@ -1,0 +1,9 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Only server functions can upload or mutate images. Public world art is immutable.
+    match /public/{path=**} { allow read: if true; allow write: if false; }
+    // Portraits are delivered by a callable that checks ownership or current co-location.
+    match /{path=**} { allow read, write: if false; }
+  }
+}

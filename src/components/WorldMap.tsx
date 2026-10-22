@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { mapTileUrl, emblemUrl } from "../../shared/assets";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
@@ -36,6 +37,7 @@ export type EditorTool =
   | "border";
 type Props = {
   world: World;
+  population?: Record<string, number>;
   onKingdom?: (id: string) => void;
   selectedKingdomId?: string;
   fitWholeWorld?: boolean;
@@ -70,6 +72,7 @@ export function WorldMap(props: Props) {
     map = useRef<L.Map | null>(null),
     latest = useRef(props),
     layers = useRef<Record<string, L.LayerGroup>>({});
+  const [zoom, setZoom] = useState(1.5);
   latest.current = props;
   const ll = (p: Point) => L.latLng(-p.y / 8, p.x / 8);
   useEffect(() => {
@@ -89,21 +92,13 @@ export function WorldMap(props: Props) {
       ll({ x: 0, y: HEIGHT }),
       ll({ x: WIDTH, y: 0 }),
     );
-    L.tileLayer("/map/tiles/{z}/{x}/{y}.webp", {
-      tileSize: 256,
-      minZoom: 0,
-      maxZoom: 5,
-      maxNativeZoom: 3,
-      noWrap: true,
-      bounds,
-      keepBuffer: 3,
-    }).addTo(m);
     m.setMaxBounds(bounds.pad(0.22));
     m.fitBounds(bounds, { padding: [20, 20] });
     if (container.current!.clientWidth < 600 && !props.fitWholeWorld)
       m.setView(ll(props.character ?? { x: 1200, y: 900 }), 1.75);
     for (const name of [
       "territories",
+      "emblems",
       "roads",
       "grid",
       "route",
@@ -182,6 +177,8 @@ export function WorldMap(props: Props) {
       }
       p.onSelect(hexAt(point, p.world));
     });
+    m.on("zoomend", () => setZoom(m.getZoom()));
+    setZoom(m.getZoom());
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(container.current!);
     props.onReady({
@@ -207,6 +204,68 @@ export function WorldMap(props: Props) {
       map.current = null;
     };
   }, []);
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    const bounds = L.latLngBounds(
+      ll({ x: 0, y: HEIGHT }),
+      ll({ x: WIDTH, y: 0 }),
+    );
+    const tile = L.tileLayer(
+      props.world.mapAssetId
+        ? mapTileUrl(props.world.mapAssetId)
+        : "/map/tiles/{z}/{x}/{y}.webp",
+      {
+        tileSize: 256,
+        minZoom: 0,
+        maxZoom: 5,
+        maxNativeZoom: props.world.mapNativeZoom === 4 ? 4 : 3,
+        noWrap: true,
+        bounds,
+        keepBuffer: 3,
+      },
+    ).addTo(m);
+    tile.setZIndex(0);
+    return () => {
+      tile.remove();
+    };
+  }, [props.world.mapAssetId, props.world.mapNativeZoom]);
+  useEffect(() => {
+    const layer = layers.current.emblems;
+    if (!layer) return;
+    layer.clearLayers();
+    if (!props.labels || zoom >= 2.5 || (props.editor && props.tool !== "pan"))
+      return;
+    for (const k of props.world.territories) {
+      const p = k.emblemPosition ?? {
+        x: k.points.reduce((a, p) => a + p.x, 0) / Math.max(1, k.points.length),
+        y: k.points.reduce((a, p) => a + p.y, 0) / Math.max(1, k.points.length),
+      };
+      const wide = zoom < 1.5;
+      L.marker(ll(p), {
+        icon: L.divIcon({
+          className: `kingdom-map-emblem ${wide ? "wide" : "compact"}`,
+          html: `${k.emblemAssetId ? `<img src="${esc(emblemUrl(k.emblemAssetId))}" alt="" draggable="false"/>` : `<span class="fallback-flag" style="color:${/^#[0-9a-fA-F]{6}$/.test(k.color) ? k.color : "#a77845"}">⚑</span>`}<span>${esc(k.name)}</span>`,
+          iconSize: [wide ? 150 : 110, wide ? 100 : 64],
+          iconAnchor: [wide ? 75 : 55, wide ? 50 : 32],
+        }),
+        title: k.name,
+        bubblingMouseEvents: false,
+        interactive: !!props.onKingdom,
+        keyboard: !!props.onKingdom,
+        zIndexOffset: 400,
+      })
+        .on("click", () => latest.current.onKingdom?.(k.id))
+        .addTo(layer);
+    }
+  }, [
+    props.world.territories,
+    props.labels,
+    zoom,
+    props.editor,
+    props.tool,
+    props.onKingdom,
+  ]);
   useEffect(() => {
     const m = map.current;
     if (!m) return;
@@ -268,7 +327,8 @@ export function WorldMap(props: Props) {
               : props.onKingdom
                 ? 0.15
                 : 0.07,
-          interactive: !!props.onKingdom,
+          interactive:
+            !!props.onKingdom && !!props.fitWholeWorld && !props.editor,
           bubblingMouseEvents: false,
         })
           .on("click", () => latest.current.onKingdom?.(t.id))
@@ -280,6 +340,7 @@ export function WorldMap(props: Props) {
     props.editor,
     props.onKingdom,
     props.selectedKingdomId,
+    props.fitWholeWorld,
   ]);
   useEffect(() => {
     const layer = layers.current.roads;
@@ -323,9 +384,10 @@ export function WorldMap(props: Props) {
     if (!layer) return;
     layer.clearLayers();
     for (const loc of props.world.locations) {
+      if (zoom < 1.25 && !props.editor && !props.fitWholeWorld) continue;
       const icon = L.divIcon({
         className: "location-marker",
-        html: `<span class="location-dot ${loc.kind}">${loc.kind === "city" ? "♜" : loc.kind === "landmark" ? "◇" : "⌂"}</span>${props.labels ? `<span class="location-label">${esc(loc.name)}</span>` : ""}`,
+        html: `<span class="location-dot ${loc.kind}">${loc.kind === "city" ? "♜" : loc.kind === "landmark" ? "◇" : "⌂"}</span>${props.labels ? `<span class="location-label">${esc(loc.name)}${props.population ? ` <small class="population-badge">${props.population[loc.id] ?? 0}</small>` : ""}</span>` : ""}`,
         iconSize: [32, 32],
         iconAnchor: [16, 16],
       });
@@ -339,7 +401,14 @@ export function WorldMap(props: Props) {
         .on("click", () => latest.current.onLocation(loc.id))
         .addTo(layer);
     }
-  }, [props.world.locations, props.labels, props.editor, props.tool]);
+  }, [
+    props.world.locations,
+    props.labels,
+    props.editor,
+    props.tool,
+    props.population,
+    zoom,
+  ]);
   useEffect(() => {
     const layer = layers.current.character;
     if (!layer) return;

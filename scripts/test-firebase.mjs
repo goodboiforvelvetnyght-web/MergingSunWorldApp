@@ -97,6 +97,23 @@ try {
         requestId: crypto.randomUUID(),
       });
       generation = c.incarnationId;
+      assert.equal(
+        (await db.doc(`characters/${p.user.uid}`).get()).exists,
+        false,
+      );
+      await assert.rejects(
+        player.call("travel", {
+          destination: { x: 1000, y: 900 },
+          worldVersion: 0,
+          requestId: crypto.randomUUID(),
+          generation,
+        }),
+      );
+      await admin.call("reviewCharacter", {
+        uid: p.user.uid,
+        applicationId: generation,
+        decision: "approved",
+      });
       assert.equal(c.realName, "Private Player Name");
       assert.equal(c.originLocationId, "emberfall");
       assert.equal(c.energy, 100);
@@ -587,6 +604,16 @@ try {
       assert.equal(results[0].incarnationId, data.requestId);
       assert.deepEqual(results[0], results[1]);
       assert.equal(results[0].energy, 100);
+      assert.deepEqual(
+        (await db.doc(`characters/${p.user.uid}`).get()).data(),
+        before,
+        "Pending replacement must preserve the active character",
+      );
+      await admin.call("reviewCharacter", {
+        uid: p.user.uid,
+        applicationId: data.requestId,
+        decision: "approved",
+      });
       assert.equal(results[0].currentLocationId, "emberfall");
       assert.deepEqual(
         { x: results[0].x, y: results[0].y },
@@ -696,6 +723,14 @@ try {
     },
   );
 
+  const { testWorldUpdate } = await import("./test-world-update.mjs");
+  await testWorldUpdate({
+    check,
+    client,
+    createUserWithEmailAndPassword,
+    admin,
+    db,
+  });
   console.log(`Firebase integration: ${passed} checks passed.`);
   process.exit(0);
 } catch (e) {

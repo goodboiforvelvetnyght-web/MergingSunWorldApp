@@ -37,9 +37,13 @@ export type Kingdom = {
   color: string;
   lore: string;
   points: Point[];
+  emblemAssetId?: string | null;
+  emblemPosition?: Point | null;
 };
 export type World = {
   schemaVersion: 2;
+  mapAssetId?: string | null;
+  mapNativeZoom?: number;
   version: number;
   radius: number;
   offsetX: number;
@@ -55,6 +59,8 @@ export type Character = {
   incarnationId?: string;
   realName?: string;
   portrait?: string;
+  portraitPath?: string;
+  approvedAt?: number;
   name: string;
   title: string;
   bio: string;
@@ -74,6 +80,7 @@ export type CharacterCreationData = {
   requestId: string;
   replace: boolean;
   expectedGeneration: string | null;
+  expectedApplicationId?: string | null;
 };
 export const characterGeneration = (c: Character) =>
   c.incarnationId ?? `legacy-${c.createdAt}`;
@@ -523,12 +530,74 @@ export function characterAfterWorldChange(
     result.currentLocationId = null;
   if (
     c.internalLocationId &&
-    !world.locations.some((l) =>
-      l.entries.some((e) => e.id === c.internalLocationId),
+    !world.locations.some(
+      (l) =>
+        l.id === result.currentLocationId &&
+        internalLocations(l).some((e) => e.id === c.internalLocationId),
     )
   )
     result.internalLocationId = null;
   if (geometryChanged && origin)
-    Object.assign(result, center(hexAt(origin, world), world));
+    Object.assign(result, center(hexAt(origin, world), world), {
+      currentLocationId: origin.id,
+      internalLocationId: commonsId(origin.id),
+    });
+  else if (
+    result.currentLocationId &&
+    physicalSettlement(result, world) !== result.currentLocationId
+  )
+    Object.assign(result, {
+      currentLocationId: null,
+      internalLocationId: null,
+    });
   return result;
+}
+
+export type CharacterApplication = {
+  id: string;
+  status: "pending" | "approved" | "rejected";
+  candidate: Character;
+  expectedGeneration: string | null;
+  submittedAt: number;
+  reviewedAt?: number;
+  reviewedBy?: string;
+  rejectionReason?: string;
+};
+export type PublicCharacter = Pick<
+  Character,
+  "name" | "title" | "bio" | "originLocationId"
+> & { uid: string; hasPortrait: boolean };
+export function commonsId(locationId: string) {
+  return `commons-${locationId}`;
+}
+export function internalLocations(location: Location): PlaceEntry[] {
+  return [
+    {
+      id: commonsId(location.id),
+      name: "Town Commons",
+      summary: "The gathering place for travelers and residents.",
+      lore: "<p>A place to meet the people of this settlement.</p>",
+    },
+    ...location.entries,
+  ];
+}
+export function physicalSettlement(c: Character, w: World): string | null {
+  if (c.currentLocationId) {
+    const l = w.locations.find((l) => l.id === c.currentLocationId);
+    if (l && key(hexAt(l, w)) === key(hexAt(c, w))) return l.id;
+  }
+  return (
+    w.locations.find((l) => key(hexAt(l, w)) === key(hexAt(c, w)))?.id ?? null
+  );
+}
+export function populationCounts(
+  characters: Character[],
+  w: World,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const c of characters) {
+    const id = physicalSettlement(c, w);
+    if (id) counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
 }

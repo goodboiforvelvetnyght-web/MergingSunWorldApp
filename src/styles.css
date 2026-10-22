@@ -3056,3 +3056,101 @@ input[type="range"] {
   line-height: 1.7;
   font-size: 13px;
 }
+
+/* World artwork and heraldry */
+.asset-upload {
+  padding: 16px 0;
+  border-top: 1px solid var(--line, #ded8c8);
+}
+.asset-upload input[type="file"] {
+  max-width: 100%;
+  font-size: 12px;
+}
+.map-art-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #a8c0bc;
+}
+.emblem-preview {
+  width: 160px;
+  height: 130px;
+  object-fit: contain;
+  align-self: center;
+}
+.kingdom-emblem img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+.kingdom-map-emblem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  color: #30271f;
+  font:
+    600 12px "DM Sans",
+    sans-serif;
+  text-shadow:
+    0 1px 3px #fff,
+    0 -1px 3px #fff,
+    1px 0 3px #fff;
+}
+.kingdom-map-emblem img {
+  width: 64px;
+  height: 66px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px #30271f55);
+}
+.kingdom-map-emblem.compact img {
+  width: 36px;
+  height: 38px;
+}
+.kingdom-map-emblem .fallback-flag {
+  font-size: 46px;
+  line-height: 1;
+}
+.kingdom-map-emblem.compact .fallback-flag {
+  font-size: 30px;
+}
+.population-badge {
+  padding: 1px 5px;
+  border-radius: 9px;
+  background: #fff8e5;
+  color: #554633;
+  font-size: 10px;
+}
+.application-status,
+.occupancy-panel,
+.review-card {
+  padding: 16px;
+  margin: 14px 0;
+  background: #f7f3e9;
+  border: 1px solid #ded8c8;
+  border-radius: 10px;
+}
+.review-card .portrait {
+  margin: 0 auto;
+}
+.review-card p,
+.application-status p {
+  overflow-wrap: anywhere;
+}
+.rejection-reason,
+.backstory-text {
+  white-space: pre-wrap;
+}
+.review-queue {
+  margin: 18px 0;
+}
+.review-queue summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.occupancy-panel .kingdom-card {
+  width: 100%;
+}

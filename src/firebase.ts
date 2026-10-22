@@ -1,3 +1,4 @@
+import { configureAssetEndpoint } from "../shared/assets";
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
@@ -19,6 +20,10 @@ export const auth = getAuth(app),
     import.meta.env.VITE_FUNCTIONS_REGION || "asia-southeast1",
   );
 if (emulator) {
+  configureAssetEndpoint(
+    "demo-merging-sun.appspot.com",
+    "http://127.0.0.1:9199",
+  );
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);

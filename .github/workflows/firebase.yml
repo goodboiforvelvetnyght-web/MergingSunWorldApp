@@ -153,8 +153,12 @@ jobs:
         run: node scripts/ensure-hosting.mjs
       - name: Enable the API used to check the Firebase billing plan
         run: gcloud services enable cloudbilling.googleapis.com --project "$FIREBASE_PROJECT" --quiet
+      - name: Check runtime access to the initialized Storage bucket
+        run: |
+          npx firebase deploy --project "$FIREBASE_PROJECT" --only functions:storageReadiness --non-interactive
+          node scripts/check-storage-access.mjs
       - name: Deploy tested site, callable functions, and rules
-        run: npx firebase deploy --project "$FIREBASE_PROJECT" --only firestore:rules,firestore:indexes,functions,hosting --non-interactive
+        run: npx firebase deploy --project "$FIREBASE_PROJECT" --only firestore:rules,firestore:indexes,functions,hosting,storage --non-interactive
       - name: Check deployed Hosting and callable endpoints
         run: node scripts/check-deployment.mjs
       - name: Record successful deployment

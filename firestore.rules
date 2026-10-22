@@ -20,6 +20,13 @@ service cloud.firestore {
         match /journeys/{journey} { allow read: if ownerOrAdmin(uid); allow write: if false; }
       }
     }
+    match /characterApplications/{uid} {
+      allow read: if ownerOrAdmin(uid);
+      allow write: if false;
+      match /history/{id} { allow read: if ownerOrAdmin(uid); allow write: if false; }
+    }
+    match /population/main { allow read: if true; allow write: if false; }
+    match /imageAssets/{id} { allow read: if admin(); allow write: if false; }
     match /adminRoles/{uid} { allow read: if ownerOrAdmin(uid); allow write: if false; }
     match /adminInvitations/{invitation} { allow read: if admin(); allow write: if false; }
     match /worldBackups/{version} { allow read: if admin(); allow write: if false; }

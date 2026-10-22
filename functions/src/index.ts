@@ -1,3 +1,20 @@
+export { storageReadiness } from "./storageReadiness.js";
+import { randomUUID } from "node:crypto";
+import { savePortrait, validateAsset } from "./assets.js";
+export { uploadWorldAsset } from "./assets.js";
+import {
+  populationRef,
+  readPopulation,
+  updatePopulation,
+} from "./characters.js";
+export {
+  reviewCharacter,
+  enterLocation,
+  getRoomCharacters,
+  getCharacterPortrait,
+  initializePopulation,
+  migrateLegacyPortraits,
+} from "./characters.js";
 import { db } from "./firebase.js";
 import { requireAdmin } from "./adminInvitations.js";
 export {
@@ -22,6 +39,10 @@ import {
   locationLabel,
   type World,
   type Character,
+  type CharacterApplication,
+  populationCounts,
+  physicalSettlement,
+  commonsId,
 } from "../../shared/world.js";
 setGlobalOptions({
   region: "asia-southeast1",
@@ -104,9 +125,43 @@ export const createCharacter = onCall(async (request) => {
       "invalid-argument",
       "Invalid character creation request.",
     );
+  const applicationRef = db.doc(`characterApplications/${request.auth!.uid}`);
+  const pending = (await applicationRef.get()).data() as
+    CharacterApplication | undefined;
+  if (pending?.id === requestId) return pending.candidate;
+  if (pending?.status === "pending")
+    throw new HttpsError(
+      "already-exists",
+      "Your character is awaiting review.",
+    );
+  const portraitPath = portrait
+    ? await savePortrait(request.auth.uid, randomUUID(), portrait)
+    : "";
   return db.runTransaction(async (tx) => {
     const ref = db.doc(`characters/${request.auth!.uid}`);
-    const [existing, ws] = await Promise.all([tx.get(ref), tx.get(worldRef)]);
+    const [existing, ws, application, archivedRequest] = await Promise.all([
+      tx.get(ref),
+      tx.get(worldRef),
+      tx.get(applicationRef),
+      tx.get(applicationRef.collection("history").doc(requestId)),
+    ]);
+    const app = application.data() as CharacterApplication | undefined;
+    if (app?.id === requestId) return app.candidate;
+    if (archivedRequest.exists)
+      throw new HttpsError(
+        "failed-precondition",
+        "This creation request belongs to an older character. Start a fresh character draft.",
+      );
+    if (app?.status === "pending")
+      throw new HttpsError(
+        "already-exists",
+        "Your character is awaiting review.",
+      );
+    if (app?.status === "rejected" && data.expectedApplicationId !== app.id)
+      throw new HttpsError(
+        "failed-precondition",
+        "This application changed. Reopen your rejected character to edit it.",
+      );
     const previous = existing.exists ? (existing.data() as Character) : null;
     if (previous?.incarnationId === requestId) return previous;
     if (previous && data.replace !== true)
@@ -145,17 +200,21 @@ export const createCharacter = onCall(async (request) => {
     const c: Character = {
       ...makeCharacter(name, title, bio, location, w),
       realName,
-      portrait,
+      portrait: "",
+      portraitPath,
       incarnationId: requestId,
       currentLocationId: location.id,
       internalLocationId: null,
     };
-    if (previous)
-      tx.set(
-        ref.collection("incarnations").doc(characterGeneration(previous)),
-        previous,
-      );
-    tx.set(ref, c);
+    const submission: CharacterApplication = {
+      id: requestId,
+      status: "pending",
+      candidate: c,
+      expectedGeneration: previous ? characterGeneration(previous) : null,
+      submittedAt: Date.now(),
+    };
+    tx.set(applicationRef, submission);
+    tx.set(applicationRef.collection("history").doc(requestId), submission);
     return c;
   });
 });
@@ -221,12 +280,17 @@ export const travel = onCall(async (request) => {
       );
     }
     const position = center(hexAt(destination, w), w);
+    const counts = await readPopulation(tx, w);
+    const arrival = physicalSettlement(
+      { ...c, ...position, currentLocationId: null },
+      w,
+    );
     const character = {
       ...c,
       ...position,
       ...energy,
-      currentLocationId: null,
-      internalLocationId: null,
+      currentLocationId: arrival,
+      internalLocationId: arrival ? commonsId(arrival) : null,
     };
     const journey = {
       from: locationLabel(c, w),
@@ -234,6 +298,7 @@ export const travel = onCall(async (request) => {
       cost: route.cost,
       at: now,
     };
+    updatePopulation(tx, counts, c, character, w);
     tx.set(characterRef, character);
     tx.set(journeyRef, journey);
     return { character, journey: { id: requestId, ...journey } };
@@ -291,7 +356,11 @@ function validateWorld(input: unknown): World {
       !Array.isArray(t.points) ||
       t.points.length < 3 ||
       t.points.length > 150 ||
-      !t.points.every(point)
+      !t.points.every(point) ||
+      (t.emblemPosition != null && !point(t.emblemPosition)) ||
+      (t.emblemAssetId != null &&
+        (typeof t.emblemAssetId !== "string" ||
+          !/^[\w-]{36}$/.test(t.emblemAssetId)))
     )
       throw new HttpsError(
         "invalid-argument",
@@ -303,6 +372,8 @@ function validateWorld(input: unknown): World {
       color: t.color,
       lore: textField(t.lore, "kingdom lore", 60000, false),
       points: t.points.map((p) => ({ x: p.x, y: p.y })),
+      emblemAssetId: t.emblemAssetId ?? null,
+      emblemPosition: t.emblemPosition ?? null,
     };
   });
   const locations = w.locations.map((l) => {
@@ -323,6 +394,15 @@ function validateWorld(input: unknown): World {
       throw new HttpsError(
         "invalid-argument",
         "A settlement can have up to 100 internal locations.",
+      );
+    if (
+      l.entries.some(
+        (e) => typeof e?.id === "string" && e.id.startsWith("commons-"),
+      )
+    )
+      throw new HttpsError(
+        "invalid-argument",
+        "Internal location IDs beginning with commons- are reserved.",
       );
     const entries = l.entries.map((e) => {
       if (!e || typeof e !== "object")
@@ -352,6 +432,7 @@ function validateWorld(input: unknown): World {
   });
   const clean: World = {
     schemaVersion: 2,
+    mapAssetId: w.mapAssetId ?? null,
     version: w.version,
     radius: w.radius,
     offsetX: w.offsetX,
@@ -376,6 +457,11 @@ function validateWorld(input: unknown): World {
 export const publishWorld = onCall(async (request) => {
   await requireAdmin(request.auth);
   const world = validateWorld(request.data?.world);
+  const mapAsset = await validateAsset(world.mapAssetId, "map");
+  world.mapNativeZoom = mapAsset?.nativeZoom === 4 ? 4 : 3;
+  await Promise.all(
+    world.territories.map((k) => validateAsset(k.emblemAssetId, "emblem")),
+  );
   return db.runTransaction(async (tx) => {
     const current = await tx.get(worldRef),
       previous = normalizeWorld((current.data() ?? DEFAULT_WORLD) as World);
@@ -408,6 +494,7 @@ export const publishWorld = onCall(async (request) => {
           "New settlements must belong to a kingdom.",
         );
     }
+    const updatedCharacters: Character[] = [];
     for (const doc of characters.docs) {
       const c = doc.data() as Character;
       const updated = characterAfterWorldChange(c, world, geometryChanged);
@@ -416,9 +503,14 @@ export const publishWorld = onCall(async (request) => {
           "failed-precondition",
           "An occupied tile or grid-reset destination cannot become impassable.",
         );
+      updatedCharacters.push(updated);
       if (JSON.stringify(updated) !== JSON.stringify(c))
         tx.set(doc.ref, updated);
     }
+    tx.set(populationRef, {
+      counts: populationCounts(updatedCharacters, world),
+      updatedAt: Date.now(),
+    });
     tx.set(db.doc(`worldBackups/${previous.version}`), previous);
     tx.set(worldRef, next);
     return next;

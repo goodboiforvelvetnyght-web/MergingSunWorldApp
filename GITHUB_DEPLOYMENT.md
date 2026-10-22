@@ -61,3 +61,16 @@ Admin activation uses [the activation page and invitation flow](DEPLOYMENT.md#5-
 - **Google authorization fails:** confirm the Cloud Shell script completed under the project owner, allow a few minutes for propagation, then retry. A repository/owner rename may require updating the workflow-reference condition; numeric IDs also prevent name reuse from inheriting access.
 - **API, IAM, or billing error:** share the error message with credentials removed. Do not create a service-account key as a workaround.
 - **Setup fails partway:** correct the reported permission/billing issue and rerun the same script. Completed steps are retained and reused.
+
+### Image storage access
+
+After initializing Firebase Storage, the custom app runtime needs access to image objects in the default bucket. In Google Cloud Shell, signed in as the project owner, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/goodboiforvelvetnyght-web/MergingSunWorldApp/main/scripts/setup-storage-access.sh -o /tmp/merging-sun-storage.sh
+bash /tmp/merging-sun-storage.sh
+```
+
+The script checks the project number and grants `roles/storage.objectUser` to `merging-sun-runtime@mergingsunapp-2.iam.gserviceaccount.com` on `gs://mergingsunapp-2.firebasestorage.app` only. It creates no keys and does not grant public access. Firebase Storage rules expose only processed world artwork and kingdom emblems; portrait objects remain inaccessible to clients and are served through location-aware callables.
+
+Deployments first update a read-only Storage readiness endpoint and check the runtime's effective image permissions. If access is missing, deployment stops before replacing the live app or its existing gameplay functions/rules. Run the command above, then rerun the workflow. The original Google setup script remains sufficient for initial deployments that don't use image storage.

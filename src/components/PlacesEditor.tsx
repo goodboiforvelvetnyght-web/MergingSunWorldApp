@@ -1,3 +1,5 @@
+import { WorldAssetUpload } from "./WorldAssets";
+import { emblemUrl } from "../../shared/assets";
 import { lazy, Suspense, useState } from "react";
 import {
   Castle,
@@ -24,6 +26,7 @@ const EntryForm = lazy(() => import("./EntryForm"));
 
 export function PlacesEditor({
   world,
+  demo = false,
   onChange,
   onEditSettlement,
   onAddSettlement,
@@ -39,6 +42,7 @@ export function PlacesEditor({
   onCancelKingdom,
 }: {
   world: World;
+  demo?: boolean;
   onChange: (w: World) => void;
   onEditSettlement: (l: Location) => void;
   onAddSettlement: (kingdomId: string) => void;
@@ -109,6 +113,55 @@ export function PlacesEditor({
             }
           />
         </label>
+        <WorldAssetUpload
+          kind="emblem"
+          value={kingdomEdit.emblemAssetId}
+          demo={demo}
+          onChange={(emblemAssetId) =>
+            onKingdomChange({ ...kingdomEdit, emblemAssetId })
+          }
+        />
+        <p className="fine-print">
+          Position the emblem independently of the border. Empty coordinates use
+          the border's average center.
+        </p>
+        <div className="form-row">
+          {(["x", "y"] as const).map((axis) => (
+            <label key={axis}>
+              Emblem {axis.toUpperCase()}
+              <input
+                type="number"
+                min={0}
+                max={axis === "x" ? 2400 : 1800}
+                step="any"
+                value={kingdomEdit.emblemPosition?.[axis] ?? ""}
+                onChange={(e) =>
+                  onKingdomChange({
+                    ...kingdomEdit,
+                    emblemPosition:
+                      e.target.value === ""
+                        ? null
+                        : {
+                            ...(kingdomEdit.emblemPosition ?? {
+                              x:
+                                kingdomEdit.points.reduce(
+                                  (a, p) => a + p.x,
+                                  0,
+                                ) / Math.max(1, kingdomEdit.points.length),
+                              y:
+                                kingdomEdit.points.reduce(
+                                  (a, p) => a + p.y,
+                                  0,
+                                ) / Math.max(1, kingdomEdit.points.length),
+                            }),
+                            [axis]: Number(e.target.value),
+                          },
+                  })
+                }
+              />
+            </label>
+          ))}
+        </div>
         <div className="info-note">
           <Flag size={18} />
           <span>
@@ -278,7 +331,11 @@ export function PlacesEditor({
                 }}
               >
                 <span className="kingdom-emblem" style={{ color: k.color }}>
-                  <Flag size={24} />
+                  {k.emblemAssetId ? (
+                    <img src={emblemUrl(k.emblemAssetId)} alt="" />
+                  ) : (
+                    <Flag size={24} />
+                  )}
                 </span>
                 <span>
                   <strong>{k.name}</strong>

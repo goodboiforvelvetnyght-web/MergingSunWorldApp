@@ -1,3 +1,10 @@
+import { WorldAssetUpload } from "./components/WorldAssets";
+import {
+  CharacterReview,
+  CharacterPortrait,
+} from "./components/CharacterReview";
+import { LocationOccupancy } from "./components/LocationOccupancy";
+import { emblemUrl } from "../shared/assets";
 import {
   lazy,
   Suspense,
@@ -73,6 +80,7 @@ import { auth } from "./firebase";
 import {
   DEFAULT_WORLD,
   normalizeWorld,
+  internalLocations,
   characterAfterWorldChange,
   characterGeneration,
   type CharacterCreationData,
@@ -168,6 +176,7 @@ export default function App() {
     [editorCategory, setEditorCategory] = useState<"landscape" | "places">(
       "places",
     ),
+    [viewKingdom, setViewKingdom] = useState<string | null>(null),
     [viewEntry, setViewEntry] = useState<PlaceEntry | null>(null);
   const [editLocation, setEditLocation] = useState<Location | null>(null),
     [busy, setBusy] = useState(false),
@@ -226,6 +235,8 @@ export default function App() {
     setFuture([]);
     setTravelConfirm(false);
     setCharacterOpen(false);
+    setViewEntry(null);
+    setViewKingdom(null);
     setEditLocation(null);
     setKingdomEdit(null);
     setTool("pan");
@@ -443,6 +454,15 @@ export default function App() {
       setBusy(false);
     }
   }
+  function beginCharacterCreation() {
+    if (!isDemo && cloud.application?.status === "pending") {
+      setTab("character");
+      setMobileOpen(true);
+      notice("Your character is already awaiting admin review.");
+      return;
+    }
+    setCharacterOpen(true);
+  }
   async function create(data: CharacterCreationData) {
     try {
       if (isDemo) {
@@ -470,7 +490,11 @@ export default function App() {
       setTab("character");
       setMobileOpen(true);
       travelRequest.current = null;
-      notice("Your story has a place in the world.");
+      notice(
+        isDemo
+          ? "Your story has a place in the world."
+          : "Your character was submitted for admin review.",
+      );
     } catch (e) {
       throw new Error(friendlyError(e));
     }
@@ -642,6 +666,7 @@ export default function App() {
           demo={isDemo}
           scope={cloud.user?.uid ?? "demo"}
           existing={character}
+          application={isDemo ? null : cloud.application}
           onClose={() => setCharacterOpen(false)}
           onSave={create}
         />
@@ -900,11 +925,54 @@ export default function App() {
                     : "A character. A journey. A world to call home."}
                 </p>
               </div>
+              {!isDemo && cloud.application && (
+                <section
+                  className="application-status form-stack"
+                  aria-label="Character review status"
+                >
+                  <h3>
+                    {cloud.application.status === "pending"
+                      ? "Awaiting admin review"
+                      : cloud.application.status === "rejected"
+                        ? "Changes requested"
+                        : "Character approved"}
+                  </h3>
+                  <p>{cloud.application.candidate.name}</p>
+                  {cloud.application.status === "pending" && (
+                    <p>
+                      {character
+                        ? "Your current character remains active while this replacement is reviewed."
+                        : "You can explore the lore while an admin reviews your character. Travel becomes available after approval."}
+                    </p>
+                  )}
+                  {cloud.application.status === "rejected" && (
+                    <>
+                      <p className="rejection-reason">
+                        {cloud.application.rejectionReason}
+                      </p>
+                      <button
+                        className="button primary"
+                        onClick={() => beginCharacterCreation()}
+                      >
+                        Edit and resubmit
+                      </button>
+                    </>
+                  )}
+                </section>
+              )}
               {character ? (
                 <>
                   <div className="character-profile">
                     <div className="portrait large">
-                      {character.portrait ? (
+                      {!isDemo &&
+                      (character.portraitPath || character.portrait) &&
+                      cloud.user ? (
+                        <CharacterPortrait
+                          uid={cloud.user.uid}
+                          version={characterGeneration(character)}
+                          alt={`${character.name} portrait`}
+                        />
+                      ) : character.portrait ? (
                         <img
                           src={character.portrait}
                           alt={`${character.name} portrait`}
@@ -998,7 +1066,10 @@ export default function App() {
                   )}
                   <button
                     className="button secondary full"
-                    onClick={() => setCharacterOpen(true)}
+                    disabled={
+                      !isDemo && cloud.application?.status === "pending"
+                    }
+                    onClick={() => beginCharacterCreation()}
                   >
                     {isDemo
                       ? "Create your own demo character"
@@ -1017,9 +1088,15 @@ export default function App() {
                   <p>Give your character a name and a place to begin.</p>
                   <button
                     className="button primary"
-                    onClick={() => setCharacterOpen(true)}
+                    disabled={
+                      !isDemo && cloud.application?.status === "pending"
+                    }
+                    onClick={() => beginCharacterCreation()}
                   >
-                    Create character <ArrowRight size={16} />
+                    {cloud.application?.status === "pending"
+                      ? "Awaiting review"
+                      : "Create character"}{" "}
+                    <ArrowRight size={16} />
                   </button>
                 </div>
               )}
@@ -1088,6 +1165,7 @@ export default function App() {
                 <>
                   <PlacesEditor
                     world={draft}
+                    demo={isDemo}
                     onChange={changeWorld}
                     onEditSettlement={setEditLocation}
                     onFocus={focusLocation}
@@ -1232,6 +1310,18 @@ export default function App() {
                       </span>
                     </div>
                   )}
+                  <WorldAssetUpload
+                    kind="map"
+                    value={draft.mapAssetId}
+                    demo={isDemo}
+                    onChange={(mapAssetId, mapNativeZoom) =>
+                      changeWorld({
+                        ...draft,
+                        mapAssetId,
+                        mapNativeZoom: mapNativeZoom ?? 3,
+                      })
+                    }
+                  />
                   <button
                     className="disclosure"
                     onClick={() => setGridSettings((s) => !s)}
@@ -1319,7 +1409,12 @@ export default function App() {
                   )}
                 </>
               )}
-              {!isDemo && cloud.admin && <AdminInvitations />}
+              {!isDemo && cloud.admin && (
+                <>
+                  <CharacterReview world={published} />
+                  <AdminInvitations />
+                </>
+              )}
               <div className="editor-actions">
                 <button
                   className="button primary full"
@@ -1420,7 +1515,7 @@ export default function App() {
           ) : (
             <button
               className="button primary full"
-              onClick={() => setCharacterOpen(true)}
+              onClick={() => beginCharacterCreation()}
             >
               <Plus size={16} /> Create your character
             </button>
@@ -1469,6 +1564,8 @@ export default function App() {
         <section className="map-stage" aria-label="World atlas">
           <WorldMap
             world={world}
+            population={isDemo ? undefined : cloud.population}
+            onKingdom={editor ? undefined : setViewKingdom}
             character={character}
             selected={destination}
             route={route}
@@ -1570,7 +1667,7 @@ export default function App() {
               onClick={() =>
                 character
                   ? mapRef.current?.focus(character)
-                  : setCharacterOpen(true)
+                  : beginCharacterCreation()
               }
             >
               <LocateFixed size={19} />
@@ -1712,10 +1809,15 @@ export default function App() {
                         }),
                       }}
                     />
-                    {!!location.entries.length && (
+                    <p className="fine-print">
+                      {isDemo
+                        ? "Demo world"
+                        : `${cloud.population[location.id] ?? 0} characters here · includes offline players`}
+                    </p>
+                    {!!internalLocations(location).length && (
                       <section className="internal-entries">
                         <h3>Within {location.name}</h3>
-                        {location.entries.map((entry) => (
+                        {internalLocations(location).map((entry) => (
                           <button
                             className="kingdom-card"
                             key={entry.id}
@@ -1749,7 +1851,7 @@ export default function App() {
                       </p>
                       <button
                         className="button primary full"
-                        onClick={() => setCharacterOpen(true)}
+                        onClick={() => beginCharacterCreation()}
                       >
                         Create character <ArrowRight size={15} />
                       </button>
@@ -1906,6 +2008,70 @@ export default function App() {
               }),
             }}
           />
+          {published.locations.find((l) =>
+            internalLocations(l).some((e) => e.id === viewEntry.id),
+          ) && (
+            <LocationOccupancy
+              location={published.locations.find((l) =>
+                internalLocations(l).some((e) => e.id === viewEntry.id),
+              )!}
+              entry={viewEntry}
+              character={character}
+              world={published}
+              demo={isDemo}
+              onEnter={(c) => {
+                if (isDemo) setDemoCharacter(c);
+                notice(`Entered ${viewEntry.name}.`);
+              }}
+            />
+          )}
+        </Modal>
+      )}
+      {viewKingdom && world.territories.find((k) => k.id === viewKingdom) && (
+        <Modal
+          title={world.territories.find((k) => k.id === viewKingdom)!.name}
+          onClose={() => setViewKingdom(null)}
+        >
+          <div className="form-stack">
+            {world.territories.find((k) => k.id === viewKingdom)!
+              .emblemAssetId && (
+              <img
+                className="emblem-preview"
+                src={emblemUrl(
+                  world.territories.find((k) => k.id === viewKingdom)!
+                    .emblemAssetId!,
+                )}
+                alt="Kingdom emblem"
+              />
+            )}
+            <article
+              className="lore-content"
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(
+                  world.territories.find((k) => k.id === viewKingdom)!.lore,
+                  {
+                    USE_PROFILES: { html: true },
+                    FORBID_TAGS: ["style", "form", "input", "button", "iframe"],
+                    FORBID_ATTR: ["style", "target"],
+                  },
+                ),
+              }}
+            />
+            {world.locations
+              .filter((l) => l.kingdomId === viewKingdom)
+              .map((l) => (
+                <button
+                  className="kingdom-card"
+                  key={l.id}
+                  onClick={() => {
+                    setViewKingdom(null);
+                    selectLocation(l.id);
+                  }}
+                >
+                  {l.name}
+                </button>
+              ))}
+          </div>
         </Modal>
       )}
       {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}

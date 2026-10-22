@@ -21,7 +21,7 @@ import {
   type Kingdom,
   type World,
 } from "../../shared/world";
-import { readLocal, saveLocal } from "../useWorld";
+import { readLocal, saveLocal, call } from "../useWorld";
 
 type Draft = {
   name: string;
@@ -97,6 +97,7 @@ export default function CharacterCreation({
   demo,
   scope,
   existing,
+  application,
   onClose,
   onSave,
 }: {
@@ -104,6 +105,7 @@ export default function CharacterCreation({
   demo: boolean;
   scope: string;
   existing: Character | null;
+  application?: import("../../shared/world").CharacterApplication | null;
   onClose: () => void;
   onSave: (data: CharacterCreationData) => Promise<void>;
 }) {
@@ -111,17 +113,28 @@ export default function CharacterCreation({
     existing ? characterGeneration(existing) : null,
   );
   const [storageKey] = useState(
-    () => `ms:creation:v2:${scope}:${initialGeneration.current ?? "new"}`,
+    () =>
+      `ms:creation:v3:${scope}:${initialGeneration.current ?? "new"}:${application?.status === "rejected" ? application.id : "fresh"}`,
   );
   const [draft, setDraft] = useState<Draft>(() =>
     readLocal(storageKey, {
-      name: "",
-      title: "",
-      bio: "",
-      realName: existing?.realName ?? "",
+      name:
+        application?.status === "rejected" ? application.candidate.name : "",
+      title:
+        application?.status === "rejected" ? application.candidate.title : "",
+      bio: application?.status === "rejected" ? application.candidate.bio : "",
+      realName: application?.candidate.realName ?? existing?.realName ?? "",
       portrait: "",
-      kingdomId: "",
-      locationId: "",
+      kingdomId:
+        application?.status === "rejected"
+          ? (world.locations.find(
+              (l) => l.id === application.candidate.originLocationId,
+            )?.kingdomId ?? "")
+          : "",
+      locationId:
+        application?.status === "rejected"
+          ? (application.candidate.originLocationId ?? "")
+          : "",
       step: 0,
       requestId: crypto.randomUUID(),
     }),
@@ -131,6 +144,36 @@ export default function CharacterCreation({
     [error, setError] = useState(""),
     [storageError, setStorageError] = useState(false),
     [replaceConfirmed, setReplaceConfirmed] = useState(false);
+  useEffect(() => {
+    if (
+      application?.status !== "rejected" ||
+      !application.candidate.portraitPath ||
+      draft.portrait
+    )
+      return;
+    let active = true;
+    setImageBusy(true);
+    void call<{ image: string }>("getCharacterPortrait", {
+      uid: scope,
+      application: true,
+    })
+      .then((r) => {
+        if (active)
+          setDraft((d) => (d.portrait ? d : { ...d, portrait: r.image }));
+      })
+      .catch(() => {
+        if (active)
+          setError(
+            "Could not load your previous portrait. You can choose it again or skip the image.",
+          );
+      })
+      .finally(() => {
+        if (active) setImageBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [entryId, setEntryId] = useState<string | null>(null);
   const nameInput = useRef<HTMLInputElement>(null),
     heading = useRef<HTMLHeadingElement>(null),
@@ -207,6 +250,7 @@ export default function CharacterCreation({
         requestId: draft.requestId,
         replace: initialGeneration.current !== null,
         expectedGeneration: initialGeneration.current,
+        expectedApplicationId: application?.id ?? null,
       });
       localStorage.removeItem(storageKey);
       onClose();
@@ -548,8 +592,10 @@ export default function CharacterCreation({
                 Player: {draft.realName} · Visible only to you and admins
               </p>
               <p>
-                You will start in {home?.name ?? "your home city"} with 100
-                energy.
+                {demo
+                  ? "You will start"
+                  : "After admin approval, you will start"}{" "}
+                in {home?.name ?? "your home city"} with 100 energy.
               </p>
               {existing && (
                 <label className="replacement-confirm">
@@ -560,8 +606,8 @@ export default function CharacterCreation({
                   />
                   Replace {existing.name} with this character. The new story
                   starts at its home city with 100 energy and an empty journey
-                  history. Your current character stays intact until you
-                  confirm.
+                  history. Your current character stays active until{" "}
+                  {demo ? "you confirm" : "an admin approves this replacement"}.
                 </label>
               )}
             </div>
@@ -605,7 +651,9 @@ export default function CharacterCreation({
               <Check size={18} />
             ) : null}
             {step === 6
-              ? "Enter the world"
+              ? demo
+                ? "Enter the world"
+                : "Submit for review"
               : step === 4 && !draft.portrait
                 ? "Skip for now"
                 : "Continue"}

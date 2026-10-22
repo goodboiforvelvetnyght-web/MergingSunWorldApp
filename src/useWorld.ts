@@ -17,6 +17,7 @@ import {
   type Character,
   type World,
   type Journey,
+  type CharacterApplication,
 } from "../shared/world";
 export function useCloud() {
   const [user, setUser] = useState<User | null>(null),
@@ -24,6 +25,8 @@ export function useCloud() {
     [claimAdmin, setClaimAdmin] = useState(false),
     [roleAdmin, setRoleAdmin] = useState(false),
     [world, setWorld] = useState<World>(DEFAULT_WORLD),
+    [application, setApplication] = useState<CharacterApplication | null>(null),
+    [population, setPopulation] = useState<Record<string, number>>({}),
     [character, setCharacter] = useState<Character | null>(null),
     [journeys, setJourneys] = useState<Journey[]>([]),
     [status, setStatus] = useState<"connecting" | "connected" | "unavailable">(
@@ -65,6 +68,7 @@ export function useCloud() {
   useEffect(() => {
     setRoleAdmin(false);
     setCharacter(null);
+    setApplication(null);
     if (!user) return;
     const role = onSnapshot(
       doc(db, "adminRoles", user.uid),
@@ -76,7 +80,15 @@ export function useCloud() {
       (s) => setCharacter(s.exists() ? (s.data() as Character) : null),
       () => setStatus("unavailable"),
     );
+    const submission = onSnapshot(
+      doc(db, "characterApplications", user.uid),
+      (s) =>
+        setApplication(s.exists() ? (s.data() as CharacterApplication) : null),
+      () => {},
+    );
+    void call("initializePopulation", {}).catch(() => {});
     return () => {
+      submission();
       role();
       profile();
     };
@@ -101,11 +113,35 @@ export function useCloud() {
       () => {},
     );
   }, [user?.uid, generation]);
+  useEffect(
+    () =>
+      onSnapshot(
+        doc(db, "population", "main"),
+        (s) => setPopulation(s.data()?.counts ?? {}),
+        () => {},
+      ),
+    [],
+  );
   const admin = claimAdmin || roleAdmin;
-  return { user, authReady, admin, world, character, journeys, status };
+  return {
+    user,
+    authReady,
+    admin,
+    world,
+    character,
+    application,
+    population,
+    journeys,
+    status,
+  };
 }
 export async function call<T>(name: string, data: unknown): Promise<T> {
-  const result = await httpsCallable<unknown, T>(functions, name)(data);
+  const result = await httpsCallable<unknown, T>(functions, name, {
+    timeout:
+      name === "uploadWorldAsset" || name === "migrateLegacyPortraits"
+        ? 180000
+        : 70000,
+  })(data);
   return result.data;
 }
 export function friendlyError(e: unknown) {

@@ -172,7 +172,54 @@ try {
   await guest.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(guest.getByRole("checkbox")).toHaveCount(0);
   await guest
-    .getByRole("button", { name: "Enter the world", exact: true })
+    .getByRole("button", { name: "Submit for review", exact: true })
+    .click();
+  await expect(
+    guest.getByRole("heading", { name: "Awaiting admin review" }),
+  ).toBeVisible();
+  assert(!(await db.doc(`characters/${invited.uid}`).get()).exists);
+  await page
+    .locator("summary")
+    .filter({ hasText: "Character reviews" })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Approve Connected Mira", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Reject with reason", exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByLabel("Rejection reason")
+    .fill("Please describe your ties to Emberfall.");
+  await page
+    .getByRole("button", { name: "Reject with reason", exact: true })
+    .click();
+  await expect(
+    guest.getByText("Please describe your ties to Emberfall.", { exact: true }),
+  ).toBeVisible();
+  // Seed an updated submission through the same public callable using the browser's authenticated SDK.
+  await guest
+    .getByRole("button", { name: "Edit and resubmit", exact: true })
+    .click();
+  await expect(guest.getByLabel("Character name", { exact: true })).toHaveValue(
+    "Connected Mira",
+  );
+  await guest.getByRole("button", { name: "Continue", exact: true }).click();
+  await guest.getByRole("button", { name: "Continue", exact: true }).click();
+  await guest.getByRole("button", { name: "Continue", exact: true }).click();
+  await guest
+    .getByLabel("Backstory", { exact: true })
+    .fill("My family keeps the old roads of Emberfall.");
+  await guest.getByRole("button", { name: "Continue", exact: true }).click();
+  await guest
+    .getByRole("button", { name: "Skip for now", exact: true })
+    .click();
+  await guest.getByRole("button", { name: "Continue", exact: true }).click();
+  await guest
+    .getByRole("button", { name: "Submit for review", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Approve Connected Mira", exact: true })
     .click();
   await expect(guest.locator(".character-profile h2")).toHaveText(
     "Connected Mira",
@@ -190,7 +237,10 @@ try {
   console.log(
     "PASS connected full-page creation and private real-name persistence",
   );
-  console.log("Connected browser checks: 3 passed.");
+  const { testConnectedWorldUpdate } =
+    await import("./test-connected-world-update.mjs");
+  await testConnectedWorldUpdate({ page, guest, db, owner, invited });
+  console.log("Connected browser checks: 5 passed.");
 } catch (e) {
   console.error(e);
   process.exitCode = 1;

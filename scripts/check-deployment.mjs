@@ -12,6 +12,13 @@ const bytes = Buffer.from(await tile.arrayBuffer());
 assert.equal(bytes.toString("ascii", 8, 12), "WEBP");
 for (const name of [
   "createCharacter",
+  "reviewCharacter",
+  "enterLocation",
+  "getRoomCharacters",
+  "getCharacterPortrait",
+  "initializePopulation",
+  "uploadWorldAsset",
+  "migrateLegacyPortraits",
   "travel",
   "publishWorld",
   "generateAdminInvitation",
@@ -30,6 +37,9 @@ for (const name of [
   const body = await response.json();
   const expected = [
     "publishWorld",
+    "reviewCharacter",
+    "uploadWorldAsset",
+    "migrateLegacyPortraits",
     "generateAdminInvitation",
     "revokeAdminInvitation",
   ].includes(name)
