@@ -25,6 +25,8 @@ async function popupAccount(page, email, verified = true) {
     .getByRole("button", { name: "Continue with Google", exact: true })
     .click();
   const popup = await popupPromise;
+  // The emulator renders the account button before registering its handlers.
+  await popup.waitForLoadState("domcontentloaded");
   await popup.locator("#add-account-button").click();
   await popup.locator("#email-input").fill(email);
   await popup.locator("#display-name-input").fill("Google Traveler");
@@ -68,6 +70,13 @@ try {
   const page = await browser.newPage({
     ignoreHTTPSErrors: !!process.env.HTTPS_PROXY,
   });
+  // The emulator's optional Material styling is loaded from a public CDN before
+  // its inline handlers. Keep this test local and independent of CDN latency.
+  await page
+    .context()
+    .route("https://unpkg.com/material-components-web@10/**", (route) =>
+      route.abort(),
+    );
   page.setDefaultTimeout(30000);
   const account = `traveler${Date.now()}`,
     email = `${account}@example.com`;
