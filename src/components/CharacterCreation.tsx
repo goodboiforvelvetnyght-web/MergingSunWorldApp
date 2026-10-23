@@ -341,7 +341,7 @@ export default function CharacterCreation({
                     map.current = handle;
                     if (home && step === 2) handle.focus(home);
                   }}
-                  fitWholeWorld
+                  kingdomSelection
                   selectedKingdomId={kingdom?.id}
                   onKingdom={
                     step === 1

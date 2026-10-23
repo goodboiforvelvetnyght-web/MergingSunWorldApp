@@ -58,6 +58,7 @@ type Props = {
   onKingdom?: (id: string) => void;
   selectedKingdomId?: string;
   fitWholeWorld?: boolean;
+  kingdomSelection?: boolean;
   character: Character | null;
   selected: Hex | null;
   route: Route | null;
@@ -702,7 +703,7 @@ export function WorldMap(props: Props) {
                   ? 0.15
                   : 0.07,
             interactive:
-              !!props.onKingdom && !!props.fitWholeWorld && !props.editor,
+              !!props.onKingdom && !!props.kingdomSelection && !props.editor,
             bubblingMouseEvents: false,
           },
         )
@@ -715,7 +716,7 @@ export function WorldMap(props: Props) {
     props.editor,
     props.onKingdom,
     props.selectedKingdomId,
-    props.fitWholeWorld,
+    props.kingdomSelection,
   ]);
   useEffect(() => {
     const layer = layers.current.roads;
@@ -743,7 +744,7 @@ export function WorldMap(props: Props) {
     layer.clearLayers();
     for (const loc of props.world.locations) {
       const appearance = iconPresentation(presentation.icons[loc.kind], zoom);
-      if (playerView && !props.fitWholeWorld && !appearance.visible) continue;
+      if (playerView && !appearance.visible) continue;
       const size = appearance.size;
       const icon = L.divIcon({
         className: "location-marker",

@@ -57,3 +57,8 @@ Fit-to-world still respects the configured zoom limits.
 Changes use the existing draft, undo and publish workflow. Publication applies
 appearance to everyone without changing coordinates, grid geometry or energy.
 Existing worlds receive default appearance settings automatically.
+
+The character-creation map uses these same published zoom, icon and label settings.
+Kingdom borders remain selectable and the birthplace lists remain available when
+an icon is hidden at the current zoom. Selecting a kingdom or home city can focus
+the map, within the configured zoom limits.
