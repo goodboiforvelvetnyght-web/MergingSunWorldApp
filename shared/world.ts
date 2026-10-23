@@ -5,6 +5,7 @@ import {
 import { normalizeTile, type StoredWorld } from "./tileStorage.js";
 import {
   DEFAULT_TRAVEL_RULES,
+  DEFAULT_SAILING_COST,
   type TravelRules,
   type TerrainType,
   type TerrainFeature,
@@ -71,6 +72,7 @@ export type Location = {
   summary: string;
   lore: string;
   starting: boolean;
+  harbour?: boolean;
 };
 export type Kingdom = {
   id: string;
@@ -767,4 +769,36 @@ export function populationCounts(
     if (id) counts[id] = (counts[id] ?? 0) + 1;
   }
   return counts;
+}
+
+/** Sailing is a flat-cost city transfer, independent of walking routes. */
+export function sailingCost(w: World): number {
+  return w.travelRules?.sailingCost ?? DEFAULT_SAILING_COST;
+}
+export function sailCharacter(
+  c: Character,
+  w: World,
+  fromId: string,
+  toId: string,
+  now = Date.now(),
+): Character {
+  const from = w.locations.find((l) => l.id === fromId);
+  const to = w.locations.find((l) => l.id === toId);
+  if (
+    !from?.harbour ||
+    from.kind === "landmark" ||
+    enteredSettlement(c, w) !== from.id
+  )
+    throw new Error("Enter your departure city with a harbour before sailing.");
+  if (!to?.harbour || to.kind === "landmark" || to.id === from.id)
+    throw new Error("Choose another settlement with a harbour.");
+  if (!inBounds(hexAt(to, w), w))
+    throw new Error("This harbour is outside the map grid.");
+  return {
+    ...c,
+    ...center(hexAt(to, w), w),
+    ...spendEnergy(c, sailingCost(w), now),
+    currentLocationId: to.id,
+    internalLocationId: null,
+  };
 }

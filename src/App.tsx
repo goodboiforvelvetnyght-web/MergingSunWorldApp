@@ -137,6 +137,8 @@ import {
   findRoute,
   energyNow,
   spendEnergy,
+  sailCharacter,
+  sailingCost,
   makeCharacter,
   locationLabel,
   type World,
@@ -807,6 +809,62 @@ export default function App() {
       notice(friendlyError(e), true);
     } finally {
       setBusy(false);
+    }
+  }
+  async function sail(destination: Location) {
+    if (!character || !activeCityId || busy || travelLock.current) return;
+    const fromId = activeCityId;
+    travelLock.current = true;
+    setBusy(true);
+    try {
+      const now = Date.now();
+      if (isDemo) {
+        const updated = sailCharacter(
+          character,
+          published,
+          fromId,
+          destination.id,
+          now,
+        );
+        setDemoCharacter(updated);
+        setDemoJourneys((list) =>
+          [
+            {
+              id: crypto.randomUUID(),
+              from: published.locations.find((l) => l.id === fromId)!.name,
+              to: destination.name,
+              cost: sailingCost(published),
+              at: now,
+            },
+            ...list,
+          ].slice(0, 20),
+        );
+      } else {
+        const fingerprint = `ship:${characterGeneration(character)}:${fromId}:${destination.id}:${published.version}:${character.energy}`;
+        if (travelRequest.current?.fingerprint !== fingerprint)
+          travelRequest.current = { fingerprint, id: crypto.randomUUID() };
+        await call("travel", {
+          mode: "ship",
+          fromLocationId: fromId,
+          destinationLocationId: destination.id,
+          worldVersion: published.version,
+          travelModel: TRAVEL_MODEL_VERSION,
+          generation: characterGeneration(character),
+          requestId: travelRequest.current.id,
+        });
+        travelRequest.current = null;
+      }
+      setCityViewId(destination.id);
+      setViewEntry(null);
+      setSelected(null);
+      setSelectedId(destination.id);
+      setNow(now);
+      notice(`You’ve arrived inside ${destination.name}.`);
+    } catch (e) {
+      notice(friendlyError(e), true);
+    } finally {
+      setBusy(false);
+      travelLock.current = false;
     }
   }
   function exportWorld() {
@@ -2232,6 +2290,7 @@ export default function App() {
               onBack={() => setCityViewId(null)}
               onEnter={() => void changeCity("enter-city", cityView)}
               onLeave={() => void changeCity("leave-city", cityView)}
+              onSail={(destination) => void sail(destination)}
               onCharacter={(c) => {
                 if (isDemo) setDemoCharacter(c);
               }}

@@ -64,6 +64,8 @@ import {
   hexAt,
   center,
   spendEnergy,
+  sailCharacter,
+  sailingCost,
   tileAt,
   entryCost,
   locationLabel,
@@ -261,10 +263,22 @@ export const travel = onCall(async (request) => {
       "failed-precondition",
       "Travel rules have been updated. Refresh the app and preview your journey again.",
     );
-  const { destination, worldVersion, requestId, generation } =
-    request.data ?? {};
+  const {
+    destination,
+    worldVersion,
+    requestId,
+    generation,
+    mode = "walk",
+    fromLocationId,
+    destinationLocationId,
+  } = request.data ?? {};
   if (
-    !point(destination) ||
+    !["walk", "ship"].includes(mode) ||
+    (mode === "walk"
+      ? !point(destination)
+      : typeof fromLocationId !== "string" ||
+        typeof destinationLocationId !== "string" ||
+        typeof generation !== "string") ||
     !Number.isInteger(worldVersion) ||
     typeof requestId !== "string" ||
     !/^[\w-]{16,80}$/.test(requestId)
@@ -303,6 +317,36 @@ export const travel = onCall(async (request) => {
         "failed-precondition",
         "The world changed. Preview your route again.",
       );
+    if (mode === "ship") {
+      let character: Character;
+      const now = Date.now();
+      try {
+        character = sailCharacter(
+          c,
+          w,
+          fromLocationId,
+          destinationLocationId,
+          now,
+        );
+      } catch (e) {
+        throw new HttpsError(
+          "failed-precondition",
+          e instanceof Error ? e.message : "Cannot sail.",
+        );
+      }
+      const counts = await readPopulation(tx, w);
+      const journey = {
+        from: w.locations.find((l) => l.id === fromLocationId)!.name,
+        to: w.locations.find((l) => l.id === destinationLocationId)!.name,
+        cost: sailingCost(w),
+        at: now,
+        mode: "ship",
+      };
+      updatePopulation(tx, counts, c, character, w);
+      tx.set(characterRef, character);
+      tx.set(journeyRef, journey);
+      return { character, journey: { id: requestId, ...journey } };
+    }
     if (enteredSettlement(c, w))
       throw new HttpsError(
         "failed-precondition",
@@ -469,7 +513,9 @@ function validateWorld(input: unknown): World {
       !l ||
       !point(l, bounds) ||
       !["town", "city", "village", "landmark"].includes(l.kind) ||
-      typeof l.starting !== "boolean"
+      typeof l.starting !== "boolean" ||
+      (l.harbour !== undefined && typeof l.harbour !== "boolean") ||
+      (l.harbour === true && l.kind === "landmark")
     )
       throw new HttpsError("invalid-argument", "Invalid location.");
     const id = uniqueId(l.id, "settlement ID");
@@ -516,6 +562,7 @@ function validateWorld(input: unknown): World {
       summary: textField(l.summary, "summary", 240, false),
       lore: textField(l.lore, "lore", 60000, false),
       starting: l.starting,
+      harbour: l.harbour ?? false,
     };
   });
   const clean: World = {
@@ -545,6 +592,12 @@ function validateWorld(input: unknown): World {
     locations,
     territories,
   };
+  for (const l of locations.filter((l) => l.harbour))
+    if (!inBounds(hexAt(l, clean), clean))
+      throw new HttpsError(
+        "invalid-argument",
+        "Harbours must be on the map grid.",
+      );
   for (const l of locations.filter((l) => l.starting))
     if (
       !inBounds(hexAt(l, clean), clean) ||

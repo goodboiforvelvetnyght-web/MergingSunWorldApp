@@ -20,6 +20,8 @@ import {
   allHexes,
   key,
   normalizeWorld,
+  center,
+  hexAt,
 } from "../functions/lib/shared/world.js";
 export async function testWorldUpdate({
   check,
@@ -76,7 +78,11 @@ export async function testWorldUpdate({
       assert.equal(typeof stored.tiles["0,0"], "string");
       assert.deepEqual(normalizeWorld(stored), normalizeWorld(published));
       assert.deepEqual(stored.mapPresentation, dense.mapPresentation);
-      for (const patch of [{ minZoom: 5 }, { defaultZoom: null }, { icons: {} }])
+      for (const patch of [
+        { minZoom: 5 },
+        { defaultZoom: null },
+        { icons: {} },
+      ])
         await assert.rejects(
           admin.call("publishWorld", {
             world: {
@@ -655,6 +661,121 @@ export async function testWorldUpdate({
           (await db.collection("characters").get()).docs.map((d) => d.data()),
           moved,
         ),
+      );
+    },
+  );
+  await check(
+    "harbour travel validates departure, charges flat energy atomically, retries once, and updates population",
+    async () => {
+      const current = (await db.doc("worlds/main").get()).data();
+      const fixture = {
+        ...DEFAULT_WORLD,
+        version: current.version,
+        travelRules: { ...defaultWorld.travelRules, sailingCost: 7 },
+        locations: DEFAULT_WORLD.locations.map((l) => ({
+          ...l,
+          harbour: ["emberfall", "sunspire"].includes(l.id),
+        })),
+      };
+      const w = await admin.call("publishWorld", { world: fixture });
+      const ref = db.doc(`characters/${first.auth.currentUser.uid}`);
+      const old = (await ref.get()).data();
+      const start = {
+        ...old,
+        ...center(
+          hexAt(
+            w.locations.find((l) => l.id === "emberfall"),
+            w,
+          ),
+          w,
+        ),
+        currentLocationId: "emberfall",
+        internalLocationId: "copper-stag",
+        energy: 30,
+        energyAt: Date.now(),
+      };
+      await ref.set(start);
+      const pop = db.doc("population/main");
+      await pop.set({
+        ...(await pop.get()).data(),
+        counts: populationCounts(
+          (await db.collection("characters").get()).docs.map((d) => d.data()),
+          w,
+        ),
+      });
+      const data = {
+        mode: "ship",
+        fromLocationId: "emberfall",
+        destinationLocationId: "sunspire",
+        worldVersion: w.version,
+        generation: characterGeneration(start),
+        requestId: crypto.randomUUID(),
+      };
+      for (const patch of [
+        { destinationLocationId: "emberfall" },
+        { destinationLocationId: "thornwatch" },
+        { fromLocationId: "sunspire" },
+        { worldVersion: w.version - 1 },
+        { generation: "stale-generation" },
+      ])
+        await assert.rejects(
+          first.call("travel", { ...data, ...patch }),
+          (e) => e.code === "functions/failed-precondition",
+        );
+      const results = await Promise.all([
+        first.call("travel", data),
+        first.call("travel", data),
+      ]);
+      assert.equal(results[0].journey.cost, 7);
+      const arrived = (await ref.get()).data();
+      assert.equal(arrived.energy, 23);
+      assert.equal(arrived.currentLocationId, "sunspire");
+      assert.equal(arrived.internalLocationId, null);
+      assert.deepEqual(
+        { x: arrived.x, y: arrived.y },
+        center(
+          hexAt(
+            w.locations.find((l) => l.id === "sunspire"),
+            w,
+          ),
+          w,
+        ),
+      );
+      await first.call("travel", data);
+      assert.equal((await ref.get()).data().energy, 23);
+      await assert.rejects(
+        first.call("travel", { ...data, requestId: crypto.randomUUID() }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      await ref.update({ energy: 0, energyAt: Date.now() });
+      await assert.rejects(
+        first.call("travel", {
+          ...data,
+          fromLocationId: "sunspire",
+          destinationLocationId: "emberfall",
+          requestId: crypto.randomUUID(),
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      assert.deepEqual(
+        Object.fromEntries(
+          Object.entries((await pop.get()).data().counts).filter(
+            ([, count]) => count > 0,
+          ),
+        ),
+        populationCounts(
+          (await db.collection("characters").get()).docs.map((d) => d.data()),
+          w,
+        ),
+      );
+      await assert.rejects(
+        admin.call("publishWorld", {
+          world: {
+            ...w,
+            locations: w.locations.map((l) => ({ ...l, harbour: "yes" })),
+          },
+        }),
+        (e) => e.code === "functions/invalid-argument",
       );
     },
   );

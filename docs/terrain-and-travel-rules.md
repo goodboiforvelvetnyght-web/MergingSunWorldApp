@@ -19,3 +19,18 @@ Hex radius supports **8–128 map units** in Grid settings and artwork alignment
 World publication supports up to 40,000 painted tiles. Stored tile values use two base-36 characters per coordinate, preserving base terrain, all features, roads and rivers. Old object-based worlds remain readable, editor drafts and exports remain expanded, and published backups use the same compact format. The existing 800 KB document guard applies to the stored world including lore. `worlds.tiles` and `worldBackups.tiles` are exempt from automatic indexing because they are read by document ID; this also keeps dense grids below Firestore's index-entry limit.
 
 Travel uses a heap-backed A* frontier and covers the supported grid without the old 10,000-visit cutoff. Painting enumerates only the local brush footprint, while grid overlays render the visible map area with a buffer as you pan and zoom.
+
+### Harbour travel
+
+Settlements can enable **Has harbour** in their details. Towns and villages may
+also have harbours; landmarks cannot. Editors place harbours manually, without
+coast or sea-connectivity calculations. At least two harbours are needed to sail.
+
+**World Rules → Travel costs → Ship travel** sets the flat energy cost (default
+10; whole numbers 1–100). Distance, roads and terrain do not change this fare.
+An approved character must have entered the departure city. Its **Harbour**
+section lists other harbours, provides destination lore and asks for confirmation.
+The server validates the current world, character and both harbours, deducts energy
+and moves the character inside the destination city, outside any internal room.
+Population counts and journey history update in the same transaction. Repeating
+a request cannot charge twice. Characters must leave the arrival city to walk.

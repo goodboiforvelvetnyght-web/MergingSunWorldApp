@@ -5,6 +5,8 @@ import {
   internalLocations,
   enteredSettlement,
   physicalSettlement,
+  sailingCost,
+  energyNow,
   type World,
   type Character,
   type Location,
@@ -22,6 +24,7 @@ export function CityView({
   onEnter,
   onLeave,
   onCharacter,
+  onSail,
 }: {
   location: Location;
   world: World;
@@ -33,6 +36,7 @@ export function CityView({
   onEnter: () => void;
   onLeave: () => void;
   onCharacter: (c: Character) => void;
+  onSail: (destination: Location) => void;
 }) {
   const inside =
     !!character && enteredSettlement(character, world) === location.id;
@@ -50,6 +54,19 @@ export function CityView({
   useEffect(() => {
     setEntryId(inside ? (character?.internalLocationId ?? null) : null);
   }, [location.id, inside, character?.internalLocationId]);
+  const [destinationId, setDestinationId] = useState("");
+  const [confirmSailing, setConfirmSailing] = useState(false);
+  useEffect(() => {
+    setDestinationId("");
+    setConfirmSailing(false);
+  }, [location.id]);
+  const harbours = world.locations.filter(
+    (l) => l.harbour && l.kind !== "landmark" && l.id !== location.id,
+  );
+  const destination = harbours.find((l) => l.id === destinationId);
+  const cost = sailingCost(world);
+  const canSail =
+    inside && !!character && energyNow(character) >= cost && !busy;
   const entries = internalLocations(location),
     entry = entries.find((e) => e.id === entryId);
   const kingdom = world.territories.find((k) => k.id === location.kingdomId);
@@ -159,6 +176,102 @@ export function CityView({
               }),
             }}
           />
+          {location.harbour && (
+            <section className="harbour-panel" aria-label="Harbour">
+              <h2>Harbour</h2>
+              <p>
+                Sail instantly to another harbour for {cost} energy, regardless
+                of distance. You arrive inside its city.
+              </p>
+              {!inside && <p>Enter this city to depart from its harbour.</p>}
+              {harbours.length ? (
+                <>
+                  <label>
+                    Destination harbour
+                    <select
+                      aria-label="Destination harbour"
+                      value={destinationId}
+                      disabled={busy}
+                      onChange={(e) => {
+                        setDestinationId(e.target.value);
+                        setConfirmSailing(false);
+                      }}
+                    >
+                      <option value="">Choose a harbour</option>
+                      {harbours.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name} ·{" "}
+                          {world.territories.find((k) => k.id === l.kingdomId)
+                            ?.name ?? "Independent"}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {destination && (
+                    <>
+                      <p>{destination.summary}</p>
+                      <details>
+                        <summary>Read about {destination.name}</summary>
+                        <article
+                          className="lore-content"
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(destination.lore, {
+                              USE_PROFILES: { html: true },
+                              FORBID_TAGS: [
+                                "style",
+                                "form",
+                                "input",
+                                "button",
+                                "iframe",
+                              ],
+                              FORBID_ATTR: ["style", "target"],
+                            }),
+                          }}
+                        />
+                      </details>
+                      {inside && character && energyNow(character) < cost && (
+                        <p>
+                          Not enough energy. You need {cost} energy to sail.
+                        </p>
+                      )}
+                      {confirmSailing ? (
+                        <div role="group" aria-label="Confirm sailing">
+                          <p>
+                            Sail from {location.name} to {destination.name} for{" "}
+                            {cost} energy?
+                          </p>
+                          <button
+                            className="button primary"
+                            disabled={!canSail}
+                            onClick={() => onSail(destination)}
+                          >
+                            {busy ? "Sailing…" : "Confirm sailing"}
+                          </button>
+                          <button
+                            className="button secondary"
+                            disabled={busy}
+                            onClick={() => setConfirmSailing(false)}
+                          >
+                            Cancel sailing
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          className="button primary"
+                          disabled={!canSail}
+                          onClick={() => setConfirmSailing(true)}
+                        >
+                          Sail to {destination.name}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </>
+              ) : (
+                <p>No other harbours are available yet.</p>
+              )}
+            </section>
+          )}
           {entry && (
             <LocationOccupancy
               key={`${location.id}:${entry.id}`}

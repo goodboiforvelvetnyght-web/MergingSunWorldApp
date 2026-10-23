@@ -23,7 +23,9 @@ export type TravelRule = {
   walking: "allowed" | "blocked" | "road-required";
   road: "discount" | "none" | "passage-only";
 };
+export const DEFAULT_SAILING_COST = 10;
 export type TravelRules = {
+  sailingCost?: number;
   terrain: Record<TerrainType, TravelRule>;
   features: Record<TerrainFeature, TravelRule>;
 };
@@ -33,6 +35,7 @@ const rule = (
   road: TravelRule["road"] = "discount",
 ): TravelRule => ({ cost, walking, road });
 export const DEFAULT_TRAVEL_RULES: TravelRules = {
+  sailingCost: DEFAULT_SAILING_COST,
   terrain: {
     plains: rule(2),
     desert: rule(4),
@@ -54,8 +57,19 @@ export function travelRulesError(value: unknown): string | null {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return "Travel rules are missing.";
   const rules = value as TravelRules;
-  if (Object.keys(rules).some((k) => !["terrain", "features"].includes(k)))
+  if (
+    Object.keys(rules).some(
+      (k) => !["terrain", "features", "sailingCost"].includes(k),
+    )
+  )
     return "Unknown travel rules category.";
+  if (
+    rules.sailingCost !== undefined &&
+    (!Number.isSafeInteger(rules.sailingCost) ||
+      rules.sailingCost < 1 ||
+      rules.sailingCost > 100)
+  )
+    return "Sailing cost must be a whole number from 1 to 100 energy.";
   for (const [group, ids] of [
     ["terrain", TERRAIN_TYPES],
     ["features", FEATURE_TYPES],

@@ -1,5 +1,6 @@
 import {
   DEFAULT_TRAVEL_RULES,
+  DEFAULT_SAILING_COST,
   TERRAIN_TYPES,
   FEATURE_TYPES,
   travelRulesError,
@@ -48,6 +49,28 @@ export function WorldRulesEditor({
           {error}
         </p>
       )}
+      <label className="sailing-cost-setting">
+        Ship travel · flat energy per journey
+        <input
+          aria-label="Sailing energy cost"
+          type="number"
+          min={1}
+          max={100}
+          step={1}
+          value={
+            Number.isFinite(rules.sailingCost ?? DEFAULT_SAILING_COST)
+              ? (rules.sailingCost ?? DEFAULT_SAILING_COST)
+              : ""
+          }
+          onChange={(e) =>
+            onChange({ ...rules, sailingCost: e.currentTarget.valueAsNumber })
+          }
+        />
+        <small>
+          Default 10 energy. Any harbour to any other harbour, regardless of
+          distance. Arrival is inside the destination city.
+        </small>
+      </label>
       <div className="rules-table-scroll">
         <table className="rules-table">
           <thead>

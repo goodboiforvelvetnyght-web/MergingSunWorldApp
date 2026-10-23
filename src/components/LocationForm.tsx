@@ -148,6 +148,19 @@ export default function LocationForm({
           />{" "}
           Allow new characters to start here
         </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={value.harbour ?? false}
+            disabled={value.kind === "landmark"}
+            onChange={(e) => field("harbour", e.target.checked)}
+          />{" "}
+          Has harbour
+        </label>
+        <p className="fine-print">
+          Allows sailing to other harbours for a flat energy cost. Harbour
+          placement is the editor’s responsibility.
+        </p>
         <div>
           <label className="field-label">Location lore</label>
           <LoreEditor

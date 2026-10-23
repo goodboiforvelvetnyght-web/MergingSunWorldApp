@@ -4193,3 +4193,34 @@ input[type="range"] {
   padding: 3px 5px;
   font-size: 12px;
 }
+
+.harbour-panel {
+  margin-top: 28px;
+  padding: 20px;
+  border: 1px solid #bcccbc;
+  border-radius: 8px;
+  background: #edf2eb;
+}
+.harbour-panel label,
+.sailing-cost-setting {
+  display: grid;
+  gap: 8px;
+}
+.harbour-panel select {
+  width: 100%;
+  padding: 10px;
+}
+.harbour-panel button {
+  margin: 8px 8px 0 0;
+}
+.harbour-panel details {
+  margin: 12px 0;
+}
+.sailing-cost-setting {
+  margin: 20px 0;
+  max-width: 550px;
+}
+.sailing-cost-setting input {
+  width: 110px;
+  padding: 8px;
+}
