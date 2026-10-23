@@ -105,6 +105,12 @@ export function WorldMap(props: Props) {
     layers = useRef<Record<string, L.LayerGroup>>({}),
     artwork = useRef<L.TileLayer | null>(null);
   const [zoom, setZoom] = useState(1.5);
+  const [viewport, setViewport] = useState<{
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  } | null>(null);
   const [context, setContext] = useState<{
     x: number;
     y: number;
@@ -352,6 +358,26 @@ export function WorldMap(props: Props) {
       }
       p.onSelect(hexAt(point, p.world));
     });
+    const updateViewport = () => {
+      const b = m.getBounds().pad(0.2);
+      const next = {
+        left: b.getWest() * 8,
+        right: b.getEast() * 8,
+        top: -b.getNorth() * 8,
+        bottom: -b.getSouth() * 8,
+      };
+      setViewport((previous) =>
+        previous &&
+        Object.keys(next).every(
+          (k) =>
+            previous[k as keyof typeof next] === next[k as keyof typeof next],
+        )
+          ? previous
+          : next,
+      );
+    };
+    m.on("moveend", updateViewport);
+    updateViewport();
     m.on("zoomend", () => setZoom(m.getZoom()));
     setZoom(m.getZoom());
     let layoutReady = element.clientWidth > 0 && element.clientHeight > 0;
@@ -518,6 +544,16 @@ export function WorldMap(props: Props) {
         ].includes(props.tool));
     if (!props.grid && !showTerrain) return;
     for (const h of allHexes(props.world)) {
+      const p = center(h, props.world),
+        margin = props.world.radius;
+      if (
+        viewport &&
+        (p.x + margin < viewport.left ||
+          p.x - margin > viewport.right ||
+          p.y + margin < viewport.top ||
+          p.y - margin > viewport.bottom)
+      )
+        continue;
       const t = tileAt(h, props.world);
       const painted = !!props.world.tiles[key(h)];
       L.polygon(corners(h, props.world).map(ll), {
@@ -591,7 +627,14 @@ export function WorldMap(props: Props) {
         ).addTo(layer);
       }
     }
-  }, [props.world, props.grid, props.terrain, props.editor, props.tool]);
+  }, [
+    props.world,
+    props.grid,
+    props.terrain,
+    props.editor,
+    props.tool,
+    viewport,
+  ]);
   useEffect(() => {
     const layer = layers.current.territories;
     if (!layer) return;

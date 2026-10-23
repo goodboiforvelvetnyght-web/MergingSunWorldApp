@@ -1,3 +1,4 @@
+import { normalizeTile, type StoredWorld } from "./tileStorage.js";
 import {
   DEFAULT_TRAVEL_RULES,
   type TravelRules,
@@ -14,6 +15,10 @@ import {
   RIVER,
 } from "./geography.js";
 export { WIDTH, HEIGHT };
+export { normalizeTile } from "./tileStorage.js";
+export const MIN_HEX_RADIUS = 8;
+export const MAX_HEX_RADIUS = 128;
+export const MAX_WORLD_TILES = 40000;
 // Legacy names remain accepted when loading older maps. tileAt returns canonical tiles.
 export type Terrain = TerrainType | "forest" | "mountain" | "water";
 export type Point = { x: number; y: number };
@@ -29,23 +34,6 @@ export type NormalizedTile = Tile & {
   terrain: TerrainType;
   features: Exclude<TerrainFeature, "river">[];
 };
-export function normalizeTile(tile: Tile): NormalizedTile {
-  const features = new Set(tile.features ?? []);
-  if (tile.terrain === "forest" || tile.terrain === "mountain")
-    features.add(tile.terrain);
-  if (features.has("mountain")) features.delete("hills");
-  return {
-    terrain:
-      tile.terrain === "water"
-        ? "ocean"
-        : tile.terrain === "forest" || tile.terrain === "mountain"
-          ? "plains"
-          : tile.terrain,
-    features: [...features].sort(),
-    river: tile.river,
-    road: tile.road ?? false,
-  };
-}
 export function paintFeature(
   tile: Tile,
   feature: TerrainFeature,
@@ -321,6 +309,20 @@ export function neighbors(h: Hex): Hex[] {
     [0, 1],
   ].map(([q, r]) => ({ q: h.q + q, r: h.r + r }));
 }
+export function brushHexes(h: Hex, size: number, w: World): Hex[] {
+  const cells: Hex[] = [],
+    range = Math.max(0, Math.min(2, Math.floor(size) - 1));
+  for (let q = -range; q <= range; q++)
+    for (
+      let r = Math.max(-range, -q - range);
+      r <= Math.min(range, -q + range);
+      r++
+    ) {
+      const cell = { q: h.q + q, r: h.r + r };
+      if (inBounds(cell, w)) cells.push(cell);
+    }
+  return cells;
+}
 export const hexDistance = (a: Hex, b: Hex) =>
   (Math.abs(a.q - b.q) +
     Math.abs(a.q + a.r - b.q - b.r) +
@@ -337,6 +339,46 @@ export type Route = {
   terrainCosts: Partial<Record<Terrain, number>>;
   featureCosts: Partial<Record<TerrainFeature, number>>;
 };
+type FrontierEntry = { h: Hex; cost: number; score: number; order: number };
+class RouteFrontier {
+  entries: FrontierEntry[] = [];
+  private before(a: FrontierEntry, b: FrontierEntry) {
+    return a.score < b.score || (a.score === b.score && a.order < b.order);
+  }
+  push(entry: FrontierEntry) {
+    const list = this.entries;
+    let i = list.length;
+    list.push(entry);
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (!this.before(entry, list[parent])) break;
+      list[i] = list[parent];
+      i = parent;
+    }
+    list[i] = entry;
+  }
+  pop(): FrontierEntry {
+    const list = this.entries,
+      result = list[0],
+      last = list.pop()!;
+    if (list.length) {
+      let i = 0;
+      while (i * 2 + 1 < list.length) {
+        let child = i * 2 + 1;
+        if (
+          child + 1 < list.length &&
+          this.before(list[child + 1], list[child])
+        )
+          child++;
+        if (!this.before(list[child], last)) break;
+        list[i] = list[child];
+        i = child;
+      }
+      list[i] = last;
+    }
+    return result;
+  }
+}
 export function findRoute(start: Hex, end: Hex, w: World): Route | null {
   if (
     !inBounds(start, w) ||
@@ -346,22 +388,23 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
     return null;
   const startKey = key(start),
     endKey = key(end),
-    open = new Map<string, Hex>([[startKey, start]]),
+    frontier = new RouteFrontier(),
     g = new Map<string, number>([[startKey, 0]]),
-    previous = new Map<string, Hex>();
-  let iterations = 0;
-  while (open.size && iterations++ < 10000) {
-    let current = start,
-      best = Infinity;
-    for (const [k, h] of open) {
-      const score = g.get(k)! + hexDistance(h, end) * 0.5;
-      if (score < best) {
-        best = score;
-        current = h;
-      }
-    }
-    const ck = key(current);
-    open.delete(ck);
+    previous = new Map<string, Hex>(),
+    visited = new Set<string>();
+  let order = 0;
+  frontier.push({
+    h: start,
+    cost: 0,
+    score: hexDistance(start, end) * 0.5,
+    order: order++,
+  });
+  while (frontier.entries.length && visited.size < MAX_WORLD_TILES) {
+    const entry = frontier.pop(),
+      current = entry.h,
+      ck = key(current);
+    if (visited.has(ck) || entry.cost !== g.get(ck)) continue;
+    visited.add(ck);
     if (ck === endKey) {
       const path = [current];
       while (key(path[0]) !== startKey)
@@ -401,7 +444,12 @@ export function findRoute(start: Hex, end: Hex, w: World): Route | null {
       if (next < (g.get(nk) ?? Infinity)) {
         g.set(nk, next);
         previous.set(nk, current);
-        open.set(nk, n);
+        frontier.push({
+          h: n,
+          cost: next,
+          score: next + hexDistance(n, end) * 0.5,
+          order: order++,
+        });
       }
     }
   }
@@ -586,7 +634,7 @@ export function locationLabel(p: Point, w: World) {
 }
 
 /** Upgrade legacy worlds without guessing allegiance from geometry or dropping lore. */
-export function normalizeWorld(input: World): World {
+export function normalizeWorld(input: World | StoredWorld): World {
   const territories = (input.territories ?? []).map((k) => ({
     ...k,
     lore: k.lore ?? "",

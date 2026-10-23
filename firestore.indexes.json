@@ -1,1 +1,7 @@
-{ "indexes": [], "fieldOverrides": [] }
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "worlds", "fieldPath": "tiles", "indexes": [] },
+    { "collectionGroup": "worldBackups", "fieldPath": "tiles", "indexes": [] }
+  ]
+}

@@ -1,3 +1,4 @@
+import { decodeTile, serializeWorld } from "../../shared/tileStorage.js";
 import {
   DEFAULT_TRAVEL_RULES,
   TRAVEL_MODEL_VERSION,
@@ -46,6 +47,9 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import {
   DEFAULT_WORLD,
+  MIN_HEX_RADIUS,
+  MAX_HEX_RADIUS,
+  MAX_WORLD_TILES,
   normalizeWorld,
   worldSize,
   inBounds,
@@ -346,8 +350,8 @@ function validateWorld(input: unknown): World {
     !Number.isInteger(w.version) ||
     w.version < 0 ||
     !Number.isFinite(w.radius) ||
-    w.radius < 16 ||
-    w.radius > 128 ||
+    w.radius < MIN_HEX_RADIUS ||
+    w.radius > MAX_HEX_RADIUS ||
     !Number.isFinite(w.offsetX) ||
     !Number.isFinite(w.offsetY) ||
     Math.abs(w.offsetX) > 256 ||
@@ -362,7 +366,7 @@ function validateWorld(input: unknown): World {
     !w.tiles ||
     typeof w.tiles !== "object" ||
     Array.isArray(w.tiles) ||
-    Object.keys(w.tiles).length > 10000 ||
+    Object.keys(w.tiles).length > MAX_WORLD_TILES ||
     !Array.isArray(w.locations) ||
     w.locations.length > 200 ||
     !Array.isArray(w.territories) ||
@@ -379,7 +383,13 @@ function validateWorld(input: unknown): World {
   )
     throw new HttpsError("invalid-argument", "Invalid map alignment.");
   const tiles: World["tiles"] = {};
-  for (const [k, t] of Object.entries(w.tiles)) {
+  for (const [k, value] of Object.entries(w.tiles)) {
+    let t;
+    try {
+      t = decodeTile(value);
+    } catch {
+      throw new HttpsError("invalid-argument", "Invalid compact terrain tile.");
+    }
     if (
       !/^-?\d{1,3},-?\d{1,3}$/.test(k) ||
       !t ||
@@ -532,7 +542,7 @@ function validateWorld(input: unknown): World {
         "invalid-argument",
         "Starting settlements must be walkable.",
       );
-  if (Buffer.byteLength(JSON.stringify(clean)) > 800000)
+  if (Buffer.byteLength(JSON.stringify(serializeWorld(clean))) > 800000)
     throw new HttpsError(
       "invalid-argument",
       "World is too large. Export and reduce content before publishing.",
@@ -643,8 +653,11 @@ export const publishWorld = onCall(async (request) => {
       presenceVersion: 2,
       updatedAt: Date.now(),
     });
-    tx.set(db.doc(`worldBackups/${previous.version}`), previous);
-    tx.set(worldRef, next);
+    tx.set(
+      db.doc(`worldBackups/${previous.version}`),
+      serializeWorld(previous),
+    );
+    tx.set(worldRef, serializeWorld(next));
     return next;
   });
 });

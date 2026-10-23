@@ -16,6 +16,9 @@ import {
   characterGeneration,
   populationCounts,
   DEFAULT_WORLD,
+  allHexes,
+  key,
+  normalizeWorld,
 } from "../functions/lib/shared/world.js";
 export async function testWorldUpdate({
   check,
@@ -36,9 +39,54 @@ export async function testWorldUpdate({
     );
   // Reset the previous road fixture while preserving all existing characters safely.
   const current = (await db.doc("worlds/main").get()).data();
-  await admin.call("publishWorld", {
+  const defaultWorld = await admin.call("publishWorld", {
     world: { ...DEFAULT_WORLD, version: current.version },
   });
+  await check(
+    "8-unit dense grids publish compactly, preserve tile data and energy, and reject smaller grids",
+    async () => {
+      const dense = { ...defaultWorld, radius: 8, tiles: {} };
+      for (const h of allHexes(dense))
+        dense.tiles[key(h)] = {
+          terrain: "plains",
+          features: ["forest"],
+          river: true,
+          road: true,
+        };
+      assert(Object.keys(dense.tiles).length > 10000);
+      assert(Buffer.byteLength(JSON.stringify(dense)) > 800000);
+      const energyBefore = new Map(
+        (await db.collection("characters").get()).docs.map((d) => [
+          d.id,
+          [d.data().energy, d.data().energyAt],
+        ]),
+      );
+      const published = await admin.call("publishWorld", { world: dense });
+      const stored = (await db.doc("worlds/main").get()).data();
+      assert(Buffer.byteLength(JSON.stringify(stored)) < 800000);
+      assert.equal(typeof stored.tiles["0,0"], "string");
+      assert.deepEqual(normalizeWorld(stored), normalizeWorld(published));
+      for (const radius of [7.99, 128.01])
+        await assert.rejects(
+          admin.call("publishWorld", { world: { ...published, radius } }),
+          (e) => e.code === "functions/invalid-argument",
+        );
+      await assert.rejects(
+        admin.call("publishWorld", {
+          world: { ...stored, tiles: { ...stored.tiles, "0,0": "06" } },
+        }),
+        (e) => e.code === "functions/invalid-argument",
+      );
+      await admin.call("publishWorld", {
+        world: { ...defaultWorld, version: published.version },
+      });
+      for (const d of (await db.collection("characters").get()).docs)
+        assert.deepEqual(
+          [d.data().energy, d.data().energyAt],
+          energyBefore.get(d.id),
+        );
+    },
+  );
   const image = `data:image/png;base64,${(
     await sharp({
       create: {

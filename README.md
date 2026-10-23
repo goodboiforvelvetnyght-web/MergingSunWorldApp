@@ -131,7 +131,7 @@ Real names and portrait references are stored in private character/application r
 
 Players cannot write character energy, positions, worlds, or journeys directly to Firestore. `createCharacter`, `travel`, and `publishWorld` are authenticated callable functions. World publishing requires a server-managed admin role or a legacy `admin: true` claim. Private records and travel histories remain owner/admin-only. A server-filtered character profile (name, title, backstory, origin, portrait) is available only to characters sharing an internal location. World content and settlement population counts are public.
 
-Travel uses transactions and idempotency request IDs. World publication checks versions to prevent one admin overwriting another's work and backs up the previous version. For this first version, publication supports up to 400 characters in one transaction and up to 800 KB of world data. Larger populations need a batched migration/maintenance workflow; publication explicitly refuses to proceed beyond the limit.
+Travel uses transactions and idempotency request IDs. World publication checks versions to prevent one admin overwriting another's work and backs up the previous version. For this first version, publication supports up to 400 characters in one transaction and up to 800 KB of stored world data. Grids support 8–128 map units and up to 40,000 painted tiles, using compact tile storage and index exemptions for the tile maps. Larger populations need a batched migration/maintenance workflow; publication explicitly refuses to proceed beyond the limit.
 
 ## Validate
 

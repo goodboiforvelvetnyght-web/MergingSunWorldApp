@@ -11,3 +11,11 @@ Road effects apply to the row's cost, except **No discount on entire hex**, whic
 Existing map data is converted when read: forest → plains + forest, mountain → plains + mountain, water → ocean. Roads, rivers, locations, character position, energy and history are preserved. Converted tiles and defaults are written with the next publication. Existing occupants of legacy mountain hexes can leave; the starting hex is not charged. An already blocked occupied hex may remain unchanged during a rules publication. An older browser with the previous travel model is asked to refresh before it can spend energy under the new rules.
 
 The rule definitions use stable IDs in `shared/travelRules.ts`, separate from individual map hexes. This provides a foundation for future content definitions. Building definitions, resource production, inventory and other asset authoring are not part of this update.
+
+## Dense grids
+
+Hex radius supports **8–128 map units** in Grid settings and artwork alignment. A smaller radius creates more hexes without changing the artwork's dimensions. Publishing a grid change retains the existing confirmation and origin-reset behavior; it never changes character energy.
+
+World publication supports up to 40,000 painted tiles. Stored tile values use two base-36 characters per coordinate, preserving base terrain, all features, roads and rivers. Old object-based worlds remain readable, editor drafts and exports remain expanded, and published backups use the same compact format. The existing 800 KB document guard applies to the stored world including lore. `worlds.tiles` and `worldBackups.tiles` are exempt from automatic indexing because they are read by document ID; this also keeps dense grids below Firestore's index-entry limit.
+
+Travel uses a heap-backed A* frontier and covers the supported grid without the old 10,000-visit cutoff. Painting enumerates only the local brush footprint, while grid overlays render the visible map area with a buffer as you pan and zoom.

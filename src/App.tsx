@@ -107,6 +107,9 @@ import {
 import { auth } from "./firebase";
 import {
   DEFAULT_WORLD,
+  MIN_HEX_RADIUS,
+  MAX_HEX_RADIUS,
+  brushHexes,
   normalizeWorld,
   worldSize,
   internalLocations,
@@ -123,7 +126,6 @@ import {
   TERRAIN_COLORS,
   allHexes,
   hexAt,
-  hexDistance,
   center,
   key,
   tileAt,
@@ -458,10 +460,7 @@ export default function App() {
       setDraft((current) => {
         if (!current) return current;
         const tiles = { ...current.tiles };
-        const cells =
-          brushSize === 1
-            ? [h]
-            : allHexes(current).filter((n) => hexDistance(n, h) < brushSize);
+        const cells = brushHexes(h, brushSize, current);
         for (const n of cells) {
           const t = tileAt(n, current);
           tiles[key(n)] =
@@ -1952,8 +1951,8 @@ export default function App() {
                             <input
                               aria-label="Hex radius"
                               type="range"
-                              min={16}
-                              max={128}
+                              min={MIN_HEX_RADIUS}
+                              max={MAX_HEX_RADIUS}
                               step="any"
                               value={draft.radius}
                               onChange={(e) =>

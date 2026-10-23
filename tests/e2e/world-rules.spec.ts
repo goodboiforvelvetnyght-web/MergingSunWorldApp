@@ -130,3 +130,50 @@ test("base and feature brushes preserve roads and rivers, with exclusive elevati
     road: true,
   });
 });
+
+test("an 8-unit grid saves, recovers after reload, and preserves painted modifiers", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "World editor", exact: true }).click();
+  await page.getByRole("button", { name: "Landscape", exact: true }).click();
+  await page.getByRole("button", { name: "Add road", exact: true }).click();
+  const map = page.getByTestId("world-map"),
+    box = (await map.boundingBox())!;
+  await map.click({ position: { x: box.width * 0.48, y: box.height * 0.48 } });
+  await page
+    .getByRole("button", { name: "Grid settings", exact: true })
+    .click();
+  await expect(page.getByLabel("Hex radius", { exact: true })).toHaveAttribute(
+    "min",
+    "8",
+  );
+  await page.getByLabel("Hex radius", { exact: true }).fill("8");
+  await page
+    .getByRole("button", { name: "Save local world", exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: "Publish grid & return characters",
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => JSON.parse(localStorage.getItem("ms:world:v1")!).radius,
+      ),
+    )
+    .toBe(8);
+  const tiles = await page.evaluate(
+    () => JSON.parse(localStorage.getItem("ms:world:v1")!).tiles,
+  );
+  expect(Object.values(tiles).some((t: any) => t.road)).toBe(true);
+  await page.reload();
+  await page.getByRole("button", { name: "World editor", exact: true }).click();
+  await page.getByRole("button", { name: "Landscape", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Grid settings", exact: true })
+    .click();
+  await expect(page.getByLabel("Hex radius", { exact: true })).toHaveValue("8");
+});

@@ -1,5 +1,7 @@
 import {
   allHexes,
+  MIN_HEX_RADIUS,
+  MAX_HEX_RADIUS,
   center,
   hexAt,
   key,
@@ -97,7 +99,7 @@ export function alignMapArtwork(
       "This map already uses its natural proportions. Choose Fit existing world.",
     );
   const { grid, shift, transform } = alignedGrid(previous, next, mode);
-  if (grid.radius < 16 || grid.radius > 128)
+  if (grid.radius < MIN_HEX_RADIUS || grid.radius > MAX_HEX_RADIUS)
     throw new Error(
       "This map shape would make the hex grid too small or too large. Adjust the grid before replacing this artwork.",
     );
