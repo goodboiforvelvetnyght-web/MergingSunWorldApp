@@ -1,4 +1,9 @@
 import {
+  DEFAULT_MAP_PRESENTATION,
+  mapPresentationError,
+  iconPresentation,
+} from "../../shared/mapPresentation";
+import {
   borderSegments,
   flattenSegments,
   smoothRoadPaths,
@@ -27,6 +32,8 @@ import {
 } from "../../shared/world";
 export type MapHandle = {
   zoom: (delta: number) => void;
+  setZoom: (zoom: number) => void;
+  start: () => void;
   home: () => void;
   focus: (p: Point) => void;
   focusBounds: (points: Point[]) => void;
@@ -46,6 +53,7 @@ export type EditorTool =
 type Props = {
   world: World;
   artworkOpacity?: number;
+  presentationPreview?: boolean;
   population?: Record<string, number>;
   onKingdom?: (id: string) => void;
   selectedKingdomId?: string;
@@ -134,13 +142,36 @@ export function WorldMap(props: Props) {
   }, [context]);
   const draggingPoint = useRef<number | null>(null);
   latest.current = props;
+  const settings = props.world.mapPresentation ?? DEFAULT_MAP_PRESENTATION;
+  // Keep preview usable while numeric fields are temporarily incomplete.
+  const presentation = mapPresentationError(settings)
+    ? DEFAULT_MAP_PRESENTATION
+    : settings;
+  const playerView = !props.editor || !!props.presentationPreview;
+  const startView = (m: L.Map) => {
+    const p = latest.current;
+    const raw = p.world.mapPresentation ?? DEFAULT_MAP_PRESENTATION;
+    const config = mapPresentationError(raw) ? DEFAULT_MAP_PRESENTATION : raw;
+    const { width, height } = worldSize(p.world);
+    if (
+      (p.presentationPreview || !p.editor) &&
+      !p.fitWholeWorld &&
+      config.startView === "default"
+    )
+      m.setView(ll({ x: width / 2, y: height / 2 }), config.defaultZoom);
+    else
+      m.fitBounds(
+        L.latLngBounds(ll({ x: 0, y: height }), ll({ x: width, y: 0 })),
+        { padding: [20, 20] },
+      );
+  };
   const ll = (p: Point) => L.latLng(-p.y / 8, p.x / 8);
   useEffect(() => {
     const m = L.map(container.current!, {
       crs: L.CRS.Simple,
       zoomControl: false,
       attributionControl: false,
-      minZoom: -1,
+      minZoom: -4,
       maxZoom: 7,
       zoomSnap: 0.25,
       zoomDelta: 0.5,
@@ -154,9 +185,9 @@ export function WorldMap(props: Props) {
       ll({ x: width, y: 0 }),
     );
     m.setMaxBounds(bounds.pad(0.22));
-    m.fitBounds(bounds, { padding: [20, 20] });
-    if (container.current!.clientWidth < 600 && !props.fitWholeWorld)
-      m.setView(ll(props.character ?? { x: width / 2, y: height / 2 }), 1.75);
+    m.setMinZoom(playerView ? presentation.minZoom : -4);
+    m.setMaxZoom(playerView ? presentation.maxZoom : 7);
+    startView(m);
     for (const name of [
       "territories",
       "emblems",
@@ -397,6 +428,11 @@ export function WorldMap(props: Props) {
     ro.observe(container.current!);
     props.onReady({
       zoom: (d) => m.setZoom(m.getZoom() + d),
+      setZoom: (z) => {
+        if (Number.isFinite(z))
+          m.setZoom(Math.max(m.getMinZoom(), Math.min(m.getMaxZoom(), z)));
+      },
+      start: () => startView(m),
       home: () => {
         const { width, height } = worldSize(latest.current.world);
         m.fitBounds(
@@ -443,7 +479,7 @@ export function WorldMap(props: Props) {
       {
         opacity: props.editor ? (props.artworkOpacity ?? 1) : 1,
         tileSize: 256,
-        minZoom: -1,
+        minZoom: -4,
         minNativeZoom: 0,
         maxZoom: 7,
         maxNativeZoom: props.world.mapNativeZoom ?? 3,
@@ -476,27 +512,35 @@ export function WorldMap(props: Props) {
       ll({ x: width, y: 0 }),
     );
     m.setMaxBounds(bounds.pad(0.22));
-    m.fitBounds(bounds, { padding: [20, 20] });
+    startView(m);
   }, [props.world.mapWidth, props.world.mapHeight]);
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+    m.setMinZoom(playerView ? presentation.minZoom : -4);
+    m.setMaxZoom(playerView ? presentation.maxZoom : 7);
+    m.setZoom(Math.max(m.getMinZoom(), Math.min(m.getMaxZoom(), m.getZoom())));
+  }, [playerView, presentation.minZoom, presentation.maxZoom]);
   useEffect(() => {
     const layer = layers.current.emblems;
     if (!layer) return;
     layer.clearLayers();
-    if (!props.labels || zoom >= 2.5 || (props.editor && props.tool !== "pan"))
-      return;
+    const appearance = iconPresentation(presentation.icons.kingdom, zoom);
+    if (!appearance.visible || (props.editor && props.tool !== "pan")) return;
     for (const k of props.world.territories) {
       const p = k.emblemPosition ?? {
         x: k.points.reduce((a, p) => a + p.x, 0) / Math.max(1, k.points.length),
         y: k.points.reduce((a, p) => a + p.y, 0) / Math.max(1, k.points.length),
       };
-      const wide = zoom < 1.5;
+      const size = appearance.size;
       L.marker(ll(p), {
         icon: L.divIcon({
-          className: `kingdom-map-emblem ${wide ? "wide" : "compact"}`,
-          html: `${k.emblemAssetId ? `<img src="${esc(emblemUrl(k.emblemAssetId))}" alt="" draggable="false"/>` : `<span class="fallback-flag" style="color:${/^#[0-9a-fA-F]{6}$/.test(k.color) ? k.color : "#a77845"}">⚑</span>`}<span>${esc(k.name)}</span>`,
-          iconSize: [wide ? 150 : 110, wide ? 100 : 64],
-          iconAnchor: [wide ? 75 : 55, wide ? 50 : 32],
+          className: "kingdom-map-emblem",
+          html: `${k.emblemAssetId ? `<img style="width:${size}px;height:${size}px" src="${esc(emblemUrl(k.emblemAssetId))}" alt="" draggable="false"/>` : `<span class="fallback-flag" style="font-size:${size}px;color:${/^#[0-9a-fA-F]{6}$/.test(k.color) ? k.color : "#a77845"}">⚑</span>`}${props.labels && appearance.label ? `<span>${esc(k.name)}</span>` : ""}`,
+          iconSize: [Math.max(110, size + 24), size + 26],
+          iconAnchor: [Math.max(110, size + 24) / 2, size / 2],
         }),
+        opacity: appearance.opacity,
         title: k.name,
         bubblingMouseEvents: false,
         interactive: !!props.onKingdom,
@@ -508,6 +552,7 @@ export function WorldMap(props: Props) {
     }
   }, [
     props.world.territories,
+    presentation,
     props.labels,
     zoom,
     props.editor,
@@ -697,12 +742,14 @@ export function WorldMap(props: Props) {
     if (!layer) return;
     layer.clearLayers();
     for (const loc of props.world.locations) {
-      if (zoom < 1.25 && !props.editor && !props.fitWholeWorld) continue;
+      const appearance = iconPresentation(presentation.icons[loc.kind], zoom);
+      if (playerView && !props.fitWholeWorld && !appearance.visible) continue;
+      const size = appearance.size;
       const icon = L.divIcon({
         className: "location-marker",
-        html: `<span class="location-dot ${loc.kind}">${loc.kind === "city" ? "♜" : loc.kind === "landmark" ? "◇" : "⌂"}</span>${props.labels ? `<span class="location-label">${esc(loc.name)}${props.population ? ` <small class="population-badge">${props.population[loc.id] ?? 0}</small>` : ""}</span>` : ""}`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        html: `<span style="width:${size}px;height:${size}px;font-size:${size * 0.7}px" class="location-dot ${loc.kind}">${loc.kind === "city" ? "♜" : loc.kind === "landmark" ? "◇" : "⌂"}</span>${props.labels && (!playerView || appearance.label) ? `<span style="top:${size + 4}px" class="location-label">${esc(loc.name)}${props.population ? ` <small class="population-badge">${props.population[loc.id] ?? 0}</small>` : ""}</span>` : ""}`,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
       L.marker(ll(loc), {
         icon,
@@ -716,6 +763,9 @@ export function WorldMap(props: Props) {
     }
   }, [
     props.world.locations,
+    presentation,
+    playerView,
+    props.fitWholeWorld,
     props.labels,
     props.editor,
     props.tool,
@@ -726,13 +776,15 @@ export function WorldMap(props: Props) {
     const layer = layers.current.character;
     if (!layer) return;
     layer.clearLayers();
-    if (props.character)
+    const appearance = iconPresentation(presentation.icons.character, zoom);
+    const size = appearance.size;
+    if (props.character && (!playerView || appearance.visible))
       L.marker(ll(props.character), {
         icon: L.divIcon({
           className: "traveler-marker",
-          html: "<span>☀</span>",
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
+          html: `<span style="width:${size}px;height:${size}px;font-size:${size * 0.76}px">☀</span>${props.labels && appearance.label ? `<span class="character-map-label">${esc(props.character.name)}</span>` : ""}`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
         }),
         title: props.character.name,
         interactive: !props.editor || props.tool === "pan",
@@ -745,7 +797,15 @@ export function WorldMap(props: Props) {
           ),
         )
         .addTo(layer);
-  }, [props.character, props.editor, props.tool]);
+  }, [
+    props.character,
+    props.editor,
+    props.tool,
+    presentation,
+    zoom,
+    playerView,
+    props.labels,
+  ]);
   useEffect(() => {
     const layer = layers.current.route;
     if (!layer) return;
@@ -881,6 +941,8 @@ export function WorldMap(props: Props) {
       aria-label="Interactive world map"
       data-testid="world-map"
       data-map-zoom={zoom}
+      data-map-min-zoom={playerView ? presentation.minZoom : -4}
+      data-map-max-zoom={playerView ? presentation.maxZoom : 7}
     >
       {context && props.editor && (
         <div

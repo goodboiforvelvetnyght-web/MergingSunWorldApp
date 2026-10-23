@@ -1,3 +1,7 @@
+import {
+  DEFAULT_MAP_PRESENTATION,
+  type MapPresentation,
+} from "./mapPresentation.js";
 import { normalizeTile, type StoredWorld } from "./tileStorage.js";
 import {
   DEFAULT_TRAVEL_RULES,
@@ -81,6 +85,7 @@ export type Kingdom = {
 export type World = {
   schemaVersion: 2;
   travelRules?: TravelRules;
+  mapPresentation?: MapPresentation;
   mapAssetId?: string | null;
   mapNativeZoom?: number;
   mapWidth?: number;
@@ -642,6 +647,9 @@ export function normalizeWorld(input: World | StoredWorld): World {
   return {
     ...input,
     schemaVersion: 2,
+    mapPresentation: structuredClone(
+      input.mapPresentation ?? DEFAULT_MAP_PRESENTATION,
+    ),
     travelRules: structuredClone(input.travelRules ?? DEFAULT_TRAVEL_RULES),
     tiles: Object.fromEntries(
       Object.entries(input.tiles).map(([k, t]) => [k, normalizeTile(t)]),

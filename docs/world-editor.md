@@ -38,3 +38,22 @@ Road tiles connect into smooth visible paths through tile centers, with branches
 **Publish world** sends completed world edits to all players. Publication is disabled while a kingdom or settlement form is open or an image upload is processing. The local preview instead offers **Save local world**, which affects only this browser. Unpublished changes and the last explicit draft-save time appear in the ribbon. Existing server version checks and world backups remain in place.
 
 Changing a border's shape or road appearance does not relocate characters. The existing grid-change and map-alignment rules apply only when those settings are changed and published.
+
+### Map presentation
+
+Open **World editor → Map presentation** to adjust player zoom limits (−4 to 7),
+starting view, and kingdom, city, town, village, landmark and character icons.
+The adjacent map previews the draft with player zoom limits and visibility rules.
+Use **Preview starting view** or enter a **Preview zoom** to inspect it. Normal
+landscape and place editing retain the full zoom range.
+
+Each category has a base size in screen pixels at zoom 2, fixed or gradual scaling,
+minimum/maximum sizes, and separate zoom ranges for icons and labels. Gradual
+scaling grows by about 15% per zoom level and stops at its size limits. Kingdom
+emblems fade near their upper visibility limit. Default starting view fits the
+world to the current screen; a specified default zoom centers on the world.
+Fit-to-world still respects the configured zoom limits.
+
+Changes use the existing draft, undo and publish workflow. Publication applies
+appearance to everyone without changing coordinates, grid geometry or energy.
+Existing worlds receive default appearance settings automatically.

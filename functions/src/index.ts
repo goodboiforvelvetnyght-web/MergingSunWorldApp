@@ -1,3 +1,7 @@
+import {
+  DEFAULT_MAP_PRESENTATION,
+  mapPresentationError,
+} from "../../shared/mapPresentation.js";
 import { decodeTile, serializeWorld } from "../../shared/tileStorage.js";
 import {
   DEFAULT_TRAVEL_RULES,
@@ -375,6 +379,11 @@ function validateWorld(input: unknown): World {
     throw new HttpsError("invalid-argument", "World limits exceeded.");
   const rulesError = travelRulesError(w.travelRules ?? DEFAULT_TRAVEL_RULES);
   if (rulesError) throw new HttpsError("invalid-argument", rulesError);
+  const presentationError = mapPresentationError(
+    w.mapPresentation ?? DEFAULT_MAP_PRESENTATION,
+  );
+  if (presentationError)
+    throw new HttpsError("invalid-argument", presentationError);
   const bounds = worldSize(w);
   if (
     w.mapAlignment &&
@@ -511,6 +520,9 @@ function validateWorld(input: unknown): World {
   });
   const clean: World = {
     schemaVersion: 2,
+    mapPresentation: structuredClone(
+      w.mapPresentation ?? DEFAULT_MAP_PRESENTATION,
+    ),
     travelRules: structuredClone(w.travelRules ?? DEFAULT_TRAVEL_RULES),
     mapAssetId: w.mapAssetId ?? null,
     mapWidth: bounds.width,

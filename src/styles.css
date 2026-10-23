@@ -4146,3 +4146,50 @@ input[type="range"] {
 .city-workspace .mobile-menu {
   display: none;
 }
+
+.presentation-settings {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.presentation-settings h2 {
+  margin: 0;
+}
+.presentation-settings p {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.presentation-settings label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.presentation-settings input,
+.presentation-settings select {
+  width: 100%;
+  padding: 6px;
+}
+.presentation-settings fieldset {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border: 1px solid #c8cebf;
+  padding: 12px;
+}
+.presentation-settings legend {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+.traveler-marker > .character-map-label {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 3px;
+  padding: 3px 5px;
+  font-size: 12px;
+}

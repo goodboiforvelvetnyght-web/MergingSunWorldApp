@@ -1,3 +1,8 @@
+import { MapPresentationEditor } from "./components/MapPresentation";
+import {
+  DEFAULT_MAP_PRESENTATION,
+  mapPresentationError,
+} from "../shared/mapPresentation";
 import { TitleScreen } from "./components/TitleScreen";
 import { PlayerGuide } from "./components/PlayerGuide";
 import { CityView } from "./components/CityView";
@@ -229,7 +234,7 @@ export default function App() {
     [kingdomEdit, setKingdomEdit] = useState<Kingdom | null>(null),
     [placementKingdom, setPlacementKingdom] = useState<string | null>(null),
     [editorCategory, setEditorCategory] = useState<
-      "landscape" | "places" | "rules"
+      "landscape" | "places" | "rules" | "presentation"
     >("places"),
     [viewKingdom, setViewKingdom] = useState<string | null>(null),
     [viewEntry, setViewEntry] = useState<PlaceEntry | null>(null);
@@ -531,6 +536,13 @@ export default function App() {
     );
     if (rulesError) {
       setToast({ text: rulesError, error: true });
+      return;
+    }
+    const presentationError = mapPresentationError(
+      draft.mapPresentation ?? DEFAULT_MAP_PRESENTATION,
+    );
+    if (presentationError) {
+      setToast({ text: presentationError, error: true });
       return;
     }
     const geometryChanged = gridChangedAfterAlignment(published, draft);
@@ -955,7 +967,9 @@ export default function App() {
     setTool("border-point");
     closeDetails();
   }
-  function chooseCategory(category: "places" | "landscape" | "rules") {
+  function chooseCategory(
+    category: "places" | "landscape" | "rules" | "presentation",
+  ) {
     if (kingdomEdit && !window.confirm("Discard the unsaved kingdom form?"))
       return;
     cancelKingdomEdit();
@@ -1242,7 +1256,10 @@ export default function App() {
               !dirty ||
               !!kingdomEdit ||
               !!editLocation ||
-              !!travelRulesError(draft?.travelRules ?? DEFAULT_TRAVEL_RULES)
+              !!travelRulesError(draft?.travelRules ?? DEFAULT_TRAVEL_RULES) ||
+              !!mapPresentationError(
+                draft?.mapPresentation ?? DEFAULT_MAP_PRESENTATION,
+              )
             }
             saving={busy}
             dirty={dirty || !!kingdomEdit}
@@ -1746,6 +1763,17 @@ export default function App() {
                     </p>
                   )}
                 </>
+              ) : editorCategory === "presentation" ? (
+                <PropertyPortal>
+                  <MapPresentationEditor
+                    settings={draft.mapPresentation ?? DEFAULT_MAP_PRESENTATION}
+                    onChange={(p) =>
+                      changeWorld({ ...draft, mapPresentation: p })
+                    }
+                    onPreview={(z) => mapRef.current?.setZoom(z)}
+                    onHome={() => mapRef.current?.start()}
+                  />
+                </PropertyPortal>
               ) : editorCategory === "rules" ? (
                 <div className="info-note">
                   Travel costs are edited in the table. Changes are part of your
@@ -2233,6 +2261,7 @@ export default function App() {
           )}
           <WorldMap
             world={world}
+            presentationPreview={editor && editorCategory === "presentation"}
             artworkOpacity={editor ? artworkOpacity : 1}
             population={isDemo ? undefined : cloud.population}
             onKingdom={editor ? undefined : setViewKingdom}
@@ -2764,9 +2793,11 @@ export default function App() {
             <small>
               {kingdomEdit
                 ? "Kingdom & border"
-                : editorCategory === "landscape"
-                  ? "Landscape"
-                  : "Selected place"}
+                : editorCategory === "presentation"
+                  ? "Map presentation"
+                  : editorCategory === "landscape"
+                    ? "Landscape"
+                    : "Selected place"}
             </small>
           </header>
           <div id="editor-properties-content" />

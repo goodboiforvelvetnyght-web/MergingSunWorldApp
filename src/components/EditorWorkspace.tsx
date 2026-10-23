@@ -116,8 +116,10 @@ export function EditorHierarchy({
 type RibbonProps = {
   artworkOpacity: number;
   onArtworkOpacity: (value: number) => void;
-  category: "places" | "landscape" | "rules";
-  onCategory: (category: "places" | "landscape" | "rules") => void;
+  category: "places" | "landscape" | "rules" | "presentation";
+  onCategory: (
+    category: "places" | "landscape" | "rules" | "presentation",
+  ) => void;
   tool: EditorTool;
   onTool: (tool: EditorTool) => void;
   editingBorder: boolean;
@@ -158,7 +160,7 @@ export function EditorRibbon(p: RibbonProps) {
           { id: "road", name: "Add road", icon: Route },
           { id: "erase-road", name: "Erase road", icon: Minus },
         ] as const)
-      : p.category === "rules"
+      : p.category === "rules" || p.category === "presentation"
         ? []
         : ([
             { id: "pan", name: "Navigate", icon: MousePointer2 },
@@ -200,19 +202,23 @@ export function EditorRibbon(p: RibbonProps) {
           role="group"
           aria-label="Editor category"
         >
-          {(["places", "landscape", "rules"] as const).map((category) => (
-            <button
-              key={category}
-              aria-pressed={p.category === category}
-              onClick={() => p.onCategory(category)}
-            >
-              {category === "places"
-                ? "Places"
-                : category === "rules"
-                  ? "World Rules"
-                  : "Landscape"}
-            </button>
-          ))}
+          {(["places", "landscape", "rules", "presentation"] as const).map(
+            (category) => (
+              <button
+                key={category}
+                aria-pressed={p.category === category}
+                onClick={() => p.onCategory(category)}
+              >
+                {category === "places"
+                  ? "Places"
+                  : category === "presentation"
+                    ? "Map presentation"
+                    : category === "rules"
+                      ? "World Rules"
+                      : "Landscape"}
+              </button>
+            ),
+          )}
         </div>
         <div className="editor-tool-group">
           {tools.map((t) => (

@@ -1,3 +1,4 @@
+import { DEFAULT_MAP_PRESENTATION } from "../functions/lib/shared/mapPresentation.js";
 import { TRAVEL_MODEL_VERSION } from "../functions/lib/shared/travelRules.js";
 import assert from "node:assert/strict";
 import sharp from "sharp";
@@ -45,7 +46,15 @@ export async function testWorldUpdate({
   await check(
     "8-unit dense grids publish compactly, preserve tile data and energy, and reject smaller grids",
     async () => {
-      const dense = { ...defaultWorld, radius: 8, tiles: {} };
+      const dense = {
+        ...defaultWorld,
+        radius: 8,
+        tiles: {},
+        mapPresentation: structuredClone(DEFAULT_MAP_PRESENTATION),
+      };
+      dense.mapPresentation.minZoom = 0;
+      dense.mapPresentation.maxZoom = 4;
+      dense.mapPresentation.icons.city.size = 40;
       for (const h of allHexes(dense))
         dense.tiles[key(h)] = {
           terrain: "plains",
@@ -66,6 +75,17 @@ export async function testWorldUpdate({
       assert(Buffer.byteLength(JSON.stringify(stored)) < 800000);
       assert.equal(typeof stored.tiles["0,0"], "string");
       assert.deepEqual(normalizeWorld(stored), normalizeWorld(published));
+      assert.deepEqual(stored.mapPresentation, dense.mapPresentation);
+      for (const patch of [{ minZoom: 5 }, { defaultZoom: null }, { icons: {} }])
+        await assert.rejects(
+          admin.call("publishWorld", {
+            world: {
+              ...published,
+              mapPresentation: { ...published.mapPresentation, ...patch },
+            },
+          }),
+          (e) => e.code === "functions/invalid-argument",
+        );
       for (const radius of [7.99, 128.01])
         await assert.rejects(
           admin.call("publishWorld", { world: { ...published, radius } }),
