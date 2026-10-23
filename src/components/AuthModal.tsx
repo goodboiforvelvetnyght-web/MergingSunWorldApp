@@ -13,8 +13,14 @@ import { ArrowRight, LoaderCircle } from "lucide-react";
 import { auth } from "../firebase";
 import { friendlyError } from "../useWorld";
 import { Modal } from "./Modal";
-export function AuthModal({ onClose }: { onClose: () => void }) {
-  const [mode, setMode] = useState<"login" | "register" | "reset">("login"),
+export function AuthModal({
+  onClose,
+  initialMode = "login",
+}: {
+  onClose: () => void;
+  initialMode?: "login" | "register";
+}) {
+  const [mode, setMode] = useState<"login" | "register" | "reset">(initialMode),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [busy, setBusy] = useState<"email" | "google" | null>(null),

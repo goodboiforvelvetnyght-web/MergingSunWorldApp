@@ -2,6 +2,8 @@
 
 A map-centered companion for a medieval fantasy LARP. Built with React, TypeScript, Leaflet, Firebase, and Tiptap.
 
+See [the closed beta guide](docs/closed-beta.md) for the custom title screen, player guide, explicit city entry, and editor artwork opacity.
+
 ## Start locally
 
 Use Node.js 22.18 or newer (the Firebase deployment runtime is Node 22).
@@ -12,7 +14,7 @@ npm --prefix functions ci
 npm run dev
 ```
 
-The app opens in **local preview** by default. A demo traveler starts in Emberfall with 100 energy. Map edits, character creation, and travel in this mode persist in this browser's local storage. They do **not** affect Firebase or transfer when you sign in.
+Anonymous visitors see the custom title screen and sign-in choices. For development, open **`/?preview=1`** to use the isolated local preview. A demo traveler starts in Emberfall with 100 energy. Map edits, character creation, and travel in this mode persist in this browser's local storage. They do **not** affect Firebase or transfer when you sign in.
 
 The placeholder map and all its tiles are checked in. Fonts are served locally. No external map service or API key is required for the map.
 
@@ -44,7 +46,7 @@ See [the desktop world editor guide](docs/world-editor.md) for mouse controls, s
 
 ## Places and existing world data
 
-The Places editor starts with kingdoms. Open a kingdom to add a settlement on the map, and open a settlement to add its internal encyclopedia entries. Use **Edit settlement / allegiance** to transfer it, including its entries, to another kingdom. Its position and both borders remain unchanged. Internal entries have stable IDs and support character stays; every settlement also has a built-in Town Commons. Characters on a settlement's hex can enter its internal locations.
+The Places editor starts with kingdoms. Open a kingdom to add a settlement on the map, and open a settlement to add its internal encyclopedia entries. Use **Edit settlement / allegiance** to transfer it, including its entries, to another kingdom. Its position and both borders remain unchanged. Internal entries have stable IDs and support character stays; every settlement also has a built-in Town Commons. Characters on a settlement's hex first choose Enter city, then visit its internal locations. Back to map preserves the character's room; Leave city returns outside without spending energy.
 
 World schema version 2 keeps the existing `territories` storage field for kingdom records, so border IDs are preserved. Settlements keep their IDs, coordinates, and lore, gain an explicit `kingdomId`, and contain `entries`. Existing region names are matched only to an exactly named kingdom; no geographic inference is used. Unmatched legacy places are preserved and can be assigned from inside a kingdom. Creating new independent places is deferred. Upgrades are normalized on read and persisted when an admin publishes; no automatic production content write is performed by deployment.
 

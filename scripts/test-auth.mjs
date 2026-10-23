@@ -82,6 +82,9 @@ try {
     email = `${account}@example.com`;
   await page.goto("http://127.0.0.1:5174");
   await page
+    .getByRole("button", { name: "Click to start", exact: true })
+    .click();
+  await page
     .getByRole("button", { name: "Sign in", exact: true })
     .last()
     .click();
@@ -96,6 +99,17 @@ try {
   await page.getByRole("button", { name: "Sign out", exact: true }).waitFor();
   assert((await page.locator(".user-label").innerText()).includes(account));
   const passwordIdentity = await currentIdentity(page);
+  await expect(
+    page.getByRole("dialog", { name: "Your story begins here", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText(
+    "while your character awaits approval",
+  );
+  await expect(page.getByRole("dialog")).toContainText("Future updates");
+  await page.getByRole("button", { name: "Got it", exact: true }).click();
+  console.log(
+    "PASS signed-in players get the guide once and can explore while waiting",
+  );
   console.log("PASS Firebase sign-up through browser");
   await page.reload();
   await page.getByRole("button", { name: "Sign out", exact: true }).waitFor();
@@ -225,7 +239,7 @@ try {
   console.log(
     "PASS blocked Google popup gives a retry message and keeps email sign-in available",
   );
-  console.log("Firebase auth browser checks: 9 passed.");
+  console.log("Firebase auth browser checks: 10 passed.");
 } catch (e) {
   console.error(e);
   process.exitCode = 1;

@@ -561,6 +561,8 @@ export function makeCharacter(
   const p = center(hexAt(location, w), w);
   return {
     originLocationId: location.id,
+    currentLocationId: null,
+    internalLocationId: null,
     name,
     title,
     bio,
@@ -642,8 +644,8 @@ export function characterAfterWorldChange(
     result.internalLocationId = null;
   if (geometryChanged && origin)
     Object.assign(result, center(hexAt(origin, world), world), {
-      currentLocationId: origin.id,
-      internalLocationId: commonsId(origin.id),
+      currentLocationId: null,
+      internalLocationId: null,
     });
   else if (
     result.currentLocationId &&
@@ -693,13 +695,19 @@ export function physicalSettlement(c: Character, w: World): string | null {
     w.locations.find((l) => key(hexAt(l, w)) === key(hexAt(c, w)))?.id ?? null
   );
 }
+/** Explicit city presence is separate from standing on a settlement's hex. */
+export function enteredSettlement(c: Character, w: World): string | null {
+  return c.currentLocationId && physicalSettlement(c, w) === c.currentLocationId
+    ? c.currentLocationId
+    : null;
+}
 export function populationCounts(
   characters: Character[],
   w: World,
 ): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const c of characters) {
-    const id = physicalSettlement(c, w);
+    const id = enteredSettlement(c, w);
     if (id) counts[id] = (counts[id] ?? 0) + 1;
   }
   return counts;

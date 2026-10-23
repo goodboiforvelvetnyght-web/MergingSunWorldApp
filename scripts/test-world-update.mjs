@@ -1,3 +1,4 @@
+import { TRAVEL_MODEL_VERSION } from "../functions/lib/shared/travelRules.js";
 import assert from "node:assert/strict";
 import sharp from "sharp";
 import { randomBytes } from "node:crypto";
@@ -205,7 +206,138 @@ export async function testWorldUpdate({
       const active = (
         await db.doc(`characters/${first.auth.currentUser.uid}`).get()
       ).data();
-      assert.equal(active.internalLocationId, commonsId("emberfall"));
+      assert.equal(active.internalLocationId, null);
+      assert.equal(active.currentLocationId, null);
+    },
+  );
+  await check(
+    "explicit city entry and leaving preserve energy, enforce room privacy, and gate travel",
+    async () => {
+      const uid = first.auth.currentUser.uid,
+        ref = db.doc(`characters/${uid}`);
+      const before = (await ref.get()).data(),
+        w = (await db.doc("worlds/main").get()).data();
+      assert.equal(before.currentLocationId, null);
+      assert.equal(before.internalLocationId, null);
+      const base = {
+        locationId: "emberfall",
+        generation: firstId,
+        worldVersion: w.version,
+      };
+      await assert.rejects(
+        first.call("enterLocation", {
+          ...base,
+          internalLocationId: "copper-stag",
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      await assert.rejects(
+        first.call("enterLocation", {
+          ...base,
+          action: "enter-city",
+          locationId: "sunspire",
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      await assert.rejects(
+        first.call("enterLocation", {
+          ...base,
+          action: "enter-city",
+          generation: "old-generation",
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      await assert.rejects(
+        first.call("enterLocation", {
+          ...base,
+          action: "enter-city",
+          worldVersion: w.version - 1,
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      await assert.rejects(
+        first.call("enterLocation", { ...base, action: "invalid" }),
+        (e) => e.code === "functions/invalid-argument",
+      );
+      const initialCounts = (await db.doc("population/main").get()).data()
+        .counts;
+      const inside = await first.call("enterLocation", {
+        ...base,
+        action: "enter-city",
+      });
+      assert.deepEqual(inside, {
+        ...before,
+        currentLocationId: "emberfall",
+        internalLocationId: null,
+      });
+      assert.equal(
+        (await db.doc("population/main").get()).data().counts.emberfall,
+        (initialCounts.emberfall ?? 0) + 1,
+      );
+      await assert.rejects(
+        first.call("getRoomCharacters", {}),
+        (e) => e.code === "functions/permission-denied",
+      );
+      await assert.rejects(
+        first.call("travel", {
+          destination: DEFAULT_WORLD.locations[1],
+          worldVersion: w.version,
+          generation: firstId,
+          travelModel: TRAVEL_MODEL_VERSION,
+          requestId: crypto.randomUUID(),
+        }),
+        (e) =>
+          e.code === "functions/failed-precondition" &&
+          e.message.includes("Leave the city"),
+      );
+      const room = await first.call("enterLocation", {
+        ...base,
+        internalLocationId: "copper-stag",
+      });
+      assert.deepEqual(
+        await first.call("enterLocation", { ...base, action: "enter-city" }),
+        room,
+        "retrying city entry must keep the selected room",
+      );
+      await assert.rejects(
+        first.call("enterLocation", {
+          ...base,
+          action: "leave-city",
+          locationId: "sunspire",
+        }),
+        (e) => e.code === "functions/failed-precondition",
+      );
+      assert.deepEqual(
+        await first.call("enterLocation", { ...base, action: "leave-city" }),
+        before,
+      );
+      assert.deepEqual(
+        await first.call("enterLocation", { ...base, action: "leave-city" }),
+        before,
+      );
+      await assert.rejects(
+        first.call("getRoomCharacters", {}),
+        (e) => e.code === "functions/permission-denied",
+      );
+      assert.equal(
+        (await db.doc("population/main").get()).data().counts.emberfall ?? 0,
+        initialCounts.emberfall ?? 0,
+      );
+      // Real travel to a city stops outside, including the return journey.
+      for (const dest of [
+        DEFAULT_WORLD.locations[1],
+        DEFAULT_WORLD.locations[0],
+      ]) {
+        const result = await first.call("travel", {
+          destination: dest,
+          worldVersion: w.version,
+          generation: firstId,
+          travelModel: TRAVEL_MODEL_VERSION,
+          requestId: crypto.randomUUID(),
+        });
+        assert.equal(result.character.currentLocationId, null);
+        assert.equal(result.character.internalLocationId, null);
+      }
     },
   );
   await check(
@@ -217,6 +349,21 @@ export async function testWorldUpdate({
         applicationId: secondId,
         decision: "approved",
       });
+      for (const [client, generation] of [
+        [first, firstId],
+        [second, secondId],
+      ]) {
+        await client.call("enterLocation", {
+          action: "enter-city",
+          locationId: "emberfall",
+          generation,
+        });
+        await client.call("enterLocation", {
+          locationId: "emberfall",
+          internalLocationId: commonsId("emberfall"),
+          generation,
+        });
+      }
       const people = await first.call("getRoomCharacters", {}),
         p = people.find((p) => p.uid === second.auth.currentUser.uid);
       assert(p);
@@ -410,7 +557,8 @@ export async function testWorldUpdate({
       const c = (
         await db.doc(`characters/${first.auth.currentUser.uid}`).get()
       ).data();
-      assert.equal(c.internalLocationId, commonsId("emberfall"));
+      assert.equal(c.internalLocationId, null);
+      assert.equal(c.currentLocationId, null);
       assert.equal(c.energy, before.energy);
       const gone = await admin.call("publishWorld", {
         world: {

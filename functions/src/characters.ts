@@ -8,9 +8,9 @@ import {
   normalizeWorld,
   characterGeneration,
   characterAfterWorldChange,
-  commonsId,
   internalLocations,
   physicalSettlement,
+  enteredSettlement,
   populationCounts,
   hexAt,
   tileAt,
@@ -27,7 +27,8 @@ const options = {
 export const populationRef = db.doc("population/main");
 export async function readPopulation(tx: Transaction, w: World) {
   const s = await tx.get(populationRef);
-  if (s.exists) return { ...s.data()!.counts } as Record<string, number>;
+  if (s.exists && s.data()?.presenceVersion === 2)
+    return { ...s.data()!.counts } as Record<string, number>;
   const chars = await tx.get(db.collection("characters").limit(401));
   if (chars.size > 400)
     throw new HttpsError(
@@ -46,11 +47,11 @@ export function updatePopulation(
   after: Character | null,
   w: World,
 ) {
-  const a = before && physicalSettlement(before, w),
-    b = after && physicalSettlement(after, w);
+  const a = before && enteredSettlement(before, w),
+    b = after && enteredSettlement(after, w);
   if (a) counts[a] = Math.max(0, (counts[a] ?? 0) - 1);
   if (b) counts[b] = (counts[b] ?? 0) + 1;
-  tx.set(populationRef, { counts, updatedAt: Date.now() });
+  tx.set(populationRef, { counts, presenceVersion: 2, updatedAt: Date.now() });
 }
 export const initializePopulation = onCall(options, async (request) => {
   if (!request.auth)
@@ -64,7 +65,11 @@ export const initializePopulation = onCall(options, async (request) => {
       tx,
       normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World),
     );
-    tx.set(populationRef, { counts, updatedAt: Date.now() });
+    tx.set(populationRef, {
+      counts,
+      presenceVersion: 2,
+      updatedAt: Date.now(),
+    });
     return { counts };
   });
 });
@@ -143,8 +148,8 @@ export const reviewCharacter = onCall(options, async (request) => {
         energy: 100,
         energyAt: now,
         approvedAt: now,
-        currentLocationId: location.id,
-        internalLocationId: commonsId(location.id),
+        currentLocationId: null,
+        internalLocationId: null,
       };
       if (previous)
         tx.set(
@@ -162,7 +167,15 @@ export const reviewCharacter = onCall(options, async (request) => {
 export const enterLocation = onCall(options, async (request) => {
   if (!request.auth)
     throw new HttpsError("unauthenticated", "Sign in to enter a location.");
-  const { locationId, internalLocationId, generation } = request.data ?? {};
+  const {
+    locationId,
+    internalLocationId,
+    generation,
+    action = "enter-room",
+    worldVersion,
+  } = request.data ?? {};
+  if (!["enter-city", "leave-city", "enter-room"].includes(action))
+    throw new HttpsError("invalid-argument", "Choose a valid city action.");
   return db.runTransaction(async (tx) => {
     const ref = db.doc(`characters/${request.auth!.uid}`);
     const [cs, ws] = await Promise.all([
@@ -182,17 +195,52 @@ export const enterLocation = onCall(options, async (request) => {
         "failed-precondition",
         "Your character changed. Reload the location.",
       );
-    if (
-      !loc ||
-      !internalLocations(loc).some((e) => e.id === internalLocationId) ||
-      physicalSettlement({ ...c, currentLocationId: loc.id }, w) !== loc.id
-    )
+    if (worldVersion !== undefined && worldVersion !== w.version)
       throw new HttpsError(
         "failed-precondition",
-        "Travel to this settlement's hex before entering.",
+        "The world changed. Open the city again.",
       );
-    const counts = await readPopulation(tx, w),
-      updated = { ...c, currentLocationId: loc.id, internalLocationId };
+    let updated: Character;
+    if (action === "leave-city") {
+      if (!c.currentLocationId) return c;
+      if (c.currentLocationId !== locationId)
+        throw new HttpsError(
+          "failed-precondition",
+          "Your city changed. Open your current city again.",
+        );
+      updated = { ...c, currentLocationId: null, internalLocationId: null };
+    } else {
+      if (
+        !loc ||
+        physicalSettlement({ ...c, currentLocationId: loc.id }, w) !== loc.id
+      )
+        throw new HttpsError(
+          "failed-precondition",
+          "Travel to this settlement's hex before entering.",
+        );
+      if (action === "enter-city") {
+        if (c.currentLocationId === loc.id) return c;
+        if (enteredSettlement(c, w))
+          throw new HttpsError(
+            "failed-precondition",
+            "Leave your current city before entering another.",
+          );
+        updated = { ...c, currentLocationId: loc.id, internalLocationId: null };
+      } else {
+        if (enteredSettlement(c, w) !== loc.id)
+          throw new HttpsError(
+            "failed-precondition",
+            "Enter the city before visiting an internal location.",
+          );
+        if (!internalLocations(loc).some((e) => e.id === internalLocationId))
+          throw new HttpsError(
+            "failed-precondition",
+            "Choose an available internal location.",
+          );
+        updated = { ...c, currentLocationId: loc.id, internalLocationId };
+      }
+    }
+    const counts = await readPopulation(tx, w);
     tx.set(ref, updated);
     updatePopulation(tx, counts, c, updated, w);
     return updated;

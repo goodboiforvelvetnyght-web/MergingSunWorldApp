@@ -3,6 +3,7 @@ import { call, friendlyError } from "../useWorld";
 import {
   characterGeneration,
   physicalSettlement,
+  enteredSettlement,
   type World,
   type Character,
   type PublicCharacter,
@@ -39,6 +40,8 @@ export function LocationOccupancy({
       { ...character, currentLocationId: location.id },
       world,
     ) === location.id;
+  const insideCity =
+    !!character && enteredSettlement(character, world) === location.id;
   useEffect(() => {
     setPeople([]);
     setSelected(null);
@@ -83,12 +86,14 @@ export function LocationOccupancy({
         <>
           <p>
             {sameHex
-              ? "Enter to meet the people staying here."
+              ? insideCity
+                ? "Enter to meet the people staying here."
+                : "Enter the city before visiting this internal location."
               : "Travel to this settlement's hex before entering."}
           </p>
           <button
             className="button primary"
-            disabled={!sameHex || busy}
+            disabled={!sameHex || !insideCity || busy}
             onClick={async () => {
               if (!character) return;
               setBusy(true);
@@ -105,6 +110,7 @@ export function LocationOccupancy({
                         locationId: location.id,
                         internalLocationId: entry.id,
                         generation: characterGeneration(character),
+                        worldVersion: world.version,
                       }),
                 );
               } catch (e) {

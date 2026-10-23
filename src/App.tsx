@@ -1,3 +1,6 @@
+import { TitleScreen } from "./components/TitleScreen";
+import { PlayerGuide } from "./components/PlayerGuide";
+import { CityView } from "./components/CityView";
 import { WorldRulesEditor } from "./components/WorldRules";
 import {
   DEFAULT_TRAVEL_RULES,
@@ -107,6 +110,8 @@ import {
   normalizeWorld,
   worldSize,
   internalLocations,
+  enteredSettlement,
+  physicalSettlement,
   characterAfterWorldChange,
   characterGeneration,
   type CharacterCreationData,
@@ -163,6 +168,21 @@ const demoStart = () =>
     DEFAULT_WORLD,
   );
 export default function App() {
+  const [titleStarted, setTitleStarted] = useState(false),
+    [authMode, setAuthMode] = useState<"login" | "register">("login"),
+    [guideOpen, setGuideOpen] = useState(false),
+    [cityViewId, setCityViewId] = useState<string | null>(null),
+    [localPreview] = useState(
+      () =>
+        readLocal("ms:local-preview", false) ||
+        new URLSearchParams(window.location.search).get("preview") === "1",
+    ),
+    [artworkOpacity, setArtworkOpacity] = useState(() => {
+      const value = readLocal("ms:editor-art-opacity", 1);
+      return typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, Math.min(1, value))
+        : 1;
+    });
   const cloud = useCloud(),
     isDemo = !cloud.user;
   const [localWorld, setLocalWorld] = useState<World>(() =>
@@ -249,6 +269,17 @@ export default function App() {
     [],
   );
   useEffect(() => {
+    saveLocal("ms:editor-art-opacity", artworkOpacity);
+  }, [artworkOpacity]);
+  useEffect(() => {
+    if (localPreview) saveLocal("ms:local-preview", true);
+  }, [localPreview]);
+  useEffect(() => {
+    if (cloud.user) setTitleStarted(true);
+    if (cloud.user && !readLocal("ms:guide:v1", false)) setGuideOpen(true);
+    if (!cloud.user) setGuideOpen(false);
+  }, [cloud.user?.uid]);
+  useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10000);
     return () => clearInterval(timer);
   }, []);
@@ -286,6 +317,7 @@ export default function App() {
     setTravelConfirm(false);
     setCharacterOpen(false);
     setViewEntry(null);
+    setCityViewId(null);
     setViewKingdom(null);
     setEditLocation(null);
     setKingdomEdit(null);
@@ -331,6 +363,14 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+  const activeCityId = character
+    ? enteredSettlement(character, published)
+    : null;
+  const activeCity = published.locations.find((l) => l.id === activeCityId);
+  const cityView =
+    !editor && cityViewId
+      ? published.locations.find((l) => l.id === cityViewId)
+      : null;
   const location = world.locations.find((l) => l.id === selectedId) ?? null;
   const destination = selected ?? (location ? hexAt(location, world) : null);
   const route = useMemo(
@@ -374,6 +414,7 @@ export default function App() {
     mapRef.current?.focus(l);
   }
   function navigate(next: typeof tab) {
+    setCityViewId(null);
     setTab(next);
     setMobileOpen(true);
     if (next === "editor" && canEdit && !draft) {
@@ -615,7 +656,7 @@ export default function App() {
           realName: data.realName,
           portrait: data.portrait,
           incarnationId: data.requestId,
-          currentLocationId: l.id,
+          currentLocationId: null,
           internalLocationId: null,
         });
         setDemoJourneys([]);
@@ -635,6 +676,10 @@ export default function App() {
   }
   async function travel() {
     if (!route || !destination || !character || travelLock.current) return;
+    if (activeCityId) {
+      notice("Leave the city before starting a journey.", true);
+      return;
+    }
     travelLock.current = true;
     setBusy(true);
     try {
@@ -653,6 +698,8 @@ export default function App() {
           ...current,
           ...pos,
           ...spendEnergy(current, validated.cost, now),
+          currentLocationId: null,
+          internalLocationId: null,
         };
         setDemoCharacter(update);
         setDemoJourneys((list) =>
@@ -690,6 +737,65 @@ export default function App() {
     } finally {
       setBusy(false);
       travelLock.current = false;
+    }
+  }
+  function dismissGuide() {
+    saveLocal("ms:guide:v1", true);
+    setGuideOpen(false);
+  }
+  async function changeCity(
+    action: "enter-city" | "leave-city",
+    city: Location,
+  ) {
+    if (!character || busy) return;
+    setBusy(true);
+    try {
+      let updated: Character;
+      if (isDemo) {
+        if (
+          action === "enter-city" &&
+          physicalSettlement(
+            { ...character, currentLocationId: city.id },
+            published,
+          ) !== city.id
+        )
+          throw new Error("Travel to this city's hex before entering.");
+        if (action === "enter-city" && activeCityId && activeCityId !== city.id)
+          throw new Error("Leave your current city before entering another.");
+        updated =
+          action === "leave-city"
+            ? {
+                ...character,
+                currentLocationId: null,
+                internalLocationId: null,
+              }
+            : activeCityId === city.id
+              ? character
+              : {
+                  ...character,
+                  currentLocationId: city.id,
+                  internalLocationId: null,
+                };
+        setDemoCharacter(updated);
+      } else
+        updated = await call<Character>("enterLocation", {
+          action,
+          locationId: city.id,
+          generation: characterGeneration(character),
+          worldVersion: published.version,
+        });
+      if (action === "enter-city") {
+        setCityViewId(city.id);
+        setMobileOpen(false);
+        setViewEntry(null);
+      } else {
+        setCityViewId(null);
+        notice(`You are outside ${city.name}.`);
+      }
+    } catch (e) {
+      notice(friendlyError(e), true);
+    } finally {
+      setBusy(false);
     }
   }
   function exportWorld() {
@@ -942,7 +1048,7 @@ export default function App() {
     return (
       <main className="creation-loading" role="status">
         <Sun size={36} />
-        <p>Opening the atlas…</p>
+        <p>Opening Merging Sun…</p>
       </main>
     );
   if (window.location.pathname.replace(/\/$/, "") === "/admin/activate")
@@ -954,6 +1060,30 @@ export default function App() {
           onSignIn={() => setAuthOpen(true)}
         />
         {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
+      </>
+    );
+  if (isDemo && !localPreview)
+    return (
+      <>
+        <TitleScreen
+          started={titleStarted}
+          obscured={authOpen}
+          onStart={() => setTitleStarted(true)}
+          onSignIn={() => {
+            setAuthMode("login");
+            setAuthOpen(true);
+          }}
+          onRegister={() => {
+            setAuthMode("register");
+            setAuthOpen(true);
+          }}
+        />
+        {authOpen && (
+          <AuthModal
+            initialMode={authMode}
+            onClose={() => setAuthOpen(false)}
+          />
+        )}
       </>
     );
   if (characterOpen)
@@ -979,7 +1109,7 @@ export default function App() {
     );
   return (
     <div
-      className={`app-shell ${editor ? `editor-workspace ${editorCategory === "rules" ? "rules-workspace" : ""}` : ""}`}
+      className={`app-shell ${editor ? `editor-workspace ${editorCategory === "rules" ? "rules-workspace" : ""}` : cityView ? "city-workspace" : ""}`}
     >
       <nav className="rail" aria-label="Main navigation">
         <a
@@ -1033,6 +1163,14 @@ export default function App() {
         <div className="rail-bottom">
           <button
             className="rail-item"
+            title="Player guide"
+            aria-label="Player guide"
+            onClick={() => setGuideOpen(true)}
+          >
+            <BookOpen size={19} />
+          </button>
+          <button
+            className="rail-item"
             title="About this preview"
             aria-label="About this preview"
             onClick={() => setAboutOpen(true)}
@@ -1058,6 +1196,8 @@ export default function App() {
       {editor && draft && (
         <>
           <EditorRibbon
+            artworkOpacity={artworkOpacity}
+            onArtworkOpacity={setArtworkOpacity}
             category={editorCategory}
             onCategory={chooseCategory}
             tool={tool}
@@ -1321,6 +1461,22 @@ export default function App() {
                         ? "Your current character remains active while this replacement is reviewed."
                         : "You can explore the lore while an admin reviews your character. Travel becomes available after approval."}
                     </p>
+                  )}
+                  {cloud.application.status === "pending" && (
+                    <button
+                      className="button secondary"
+                      onClick={() => navigate("journal")}
+                    >
+                      Explore the lore while you wait
+                    </button>
+                  )}
+                  {cloud.application.status === "approved" && character && (
+                    <button
+                      className="button primary"
+                      onClick={() => navigate("atlas")}
+                    >
+                      Explore the world
+                    </button>
                   )}
                   {cloud.application.status === "rejected" && (
                     <>
@@ -1992,9 +2148,21 @@ export default function App() {
             <Globe2 size={18} />
             <span>The World Atlas</span>
             <ChevronRight size={13} />
-            <small>{editor ? "World editor" : "The known world"}</small>
+            <small>
+              {editor
+                ? "World editor"
+                : cityView
+                  ? cityView.name
+                  : "The known world"}
+            </small>
           </div>
           <div className="topbar-actions">
+            <span
+              className="beta-badge"
+              title="Beta: features may change and character progress may be reset."
+            >
+              BETA · Progress may reset
+            </span>
             <span className="preview-badge">
               <i />
               {isDemo
@@ -2026,6 +2194,36 @@ export default function App() {
               : "World atlas"
           }
         >
+          {cityView && (
+            <CityView
+              location={cityView}
+              world={published}
+              character={character}
+              demo={isDemo}
+              population={cloud.population[cityView.id] ?? 0}
+              busy={busy}
+              onBack={() => setCityViewId(null)}
+              onEnter={() => void changeCity("enter-city", cityView)}
+              onLeave={() => void changeCity("leave-city", cityView)}
+              onCharacter={(c) => {
+                if (isDemo) setDemoCharacter(c);
+              }}
+            />
+          )}
+          {activeCity && !cityView && !editor && (
+            <div className="city-return-bar">
+              <span>Your character is inside {activeCity.name}.</span>
+              <button
+                className="button secondary"
+                onClick={() => {
+                  setCityViewId(activeCity.id);
+                  setMobileOpen(false);
+                }}
+              >
+                Return to city
+              </button>
+            </div>
+          )}
           {editor && editorCategory === "rules" && draft && (
             <WorldRulesEditor
               rules={draft.travelRules ?? DEFAULT_TRAVEL_RULES}
@@ -2036,6 +2234,7 @@ export default function App() {
           )}
           <WorldMap
             world={world}
+            artworkOpacity={editor ? artworkOpacity : 1}
             population={isDemo ? undefined : cloud.population}
             onKingdom={editor ? undefined : setViewKingdom}
             selectedKingdomId={
@@ -2278,6 +2477,45 @@ export default function App() {
                 </div>
                 {location && (
                   <>
+                    {!editor && (
+                      <div className="city-map-actions">
+                        <button
+                          className="button secondary"
+                          onClick={() => {
+                            setCityViewId(location.id);
+                            setMobileOpen(false);
+                          }}
+                        >
+                          View city
+                        </button>
+                        {character &&
+                          physicalSettlement(
+                            { ...character, currentLocationId: location.id },
+                            published,
+                          ) === location.id &&
+                          (activeCityId === location.id ? (
+                            <button
+                              className="button primary"
+                              onClick={() => {
+                                setCityViewId(location.id);
+                                setMobileOpen(false);
+                              }}
+                            >
+                              Return to city
+                            </button>
+                          ) : (
+                            <button
+                              className="button primary"
+                              disabled={busy || !!activeCityId}
+                              onClick={() =>
+                                void changeCity("enter-city", location)
+                              }
+                            >
+                              Enter city
+                            </button>
+                          ))}
+                      </div>
+                    )}
                     <div className="detail-actions">
                       <button
                         className="text-button"
@@ -2450,9 +2688,20 @@ export default function App() {
                             : ` Recover 1 every ${REGEN_MS / 60000} minutes.`}
                         </p>
                       )}
+                      {activeCityId && (
+                        <p className="info-note">
+                          Leave the city before starting a journey. Back to map
+                          keeps your character inside.
+                        </p>
+                      )}
                       <button
                         className="button primary full"
-                        disabled={editor || route.cost > energy || busy}
+                        disabled={
+                          editor ||
+                          !!activeCityId ||
+                          route.cost > energy ||
+                          busy
+                        }
                         onClick={() => setTravelConfirm(true)}
                       >
                         {editor
@@ -2774,6 +3023,21 @@ export default function App() {
             </button>
           </div>
         </Modal>
+      )}
+      {guideOpen && (
+        <PlayerGuide
+          hasCharacter={!!character}
+          pending={cloud.application?.status === "pending"}
+          onClose={dismissGuide}
+          onExplore={() => {
+            dismissGuide();
+            navigate("journal");
+          }}
+          onCreate={() => {
+            dismissGuide();
+            beginCharacterCreation();
+          }}
+        />
       )}
       {aboutOpen && (
         <Modal

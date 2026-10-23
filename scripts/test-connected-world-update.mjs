@@ -214,65 +214,72 @@ export async function testConnectedWorldUpdate({
   await guest.getByLabel("Search locations", { exact: true }).fill("Emberfall");
   await guest.locator(".place-item").click();
   await expect(
-    guest.getByText("2 characters here · includes offline players", {
+    guest.getByText("1 characters here · includes offline players", {
       exact: true,
     }),
   ).toBeVisible();
-  await guest
-    .locator(".internal-entries .kingdom-card")
-    .filter({ hasText: "Town Commons" })
+  const beforeEntry = (await db.doc(`characters/${invited.uid}`).get()).data();
+  assert.equal(beforeEntry.currentLocationId, null);
+  await guest.getByRole("button", { name: "Enter city", exact: true }).click();
+  const city = guest.getByRole("region", {
+    name: "Emberfall city view",
+    exact: true,
+  });
+  await expect(city).toBeVisible();
+  await expect(city).toContainText("2 characters inside");
+  await city.getByRole("button", { name: /Town Commons/ }).click();
+  await city
+    .getByRole("button", { name: "Enter Town Commons", exact: true })
     .click();
-  await expect(guest.getByRole("dialog")).toContainText("You are here");
-  await guest
+  await expect(city).toContainText("You are here");
+  await city
     .getByRole("button", {
       name: "Resident of the Commons Keeper",
       exact: true,
     })
     .click();
-  await expect(guest.getByRole("dialog")).toContainText(
-    "A public resident history.",
-  );
-  await expect(guest.getByRole("dialog")).not.toContainText(
-    "Hidden Resident Real Name",
-  );
-  await guest
-    .getByRole("button", { name: "Close dialog", exact: true })
-    .click();
-  await guest
-    .locator(".internal-entries .kingdom-card")
-    .filter({ hasText: "The Copper Stag" })
-    .click();
-  await guest
+  await expect(city).toContainText("A public resident history.");
+  await expect(city).not.toContainText("Hidden Resident Real Name");
+  await city.getByRole("button", { name: /The Copper Stag/ }).click();
+  await city
     .getByRole("button", { name: "Enter The Copper Stag", exact: true })
     .click();
-  await expect(guest.getByRole("dialog")).toContainText(
-    "No other characters here.",
+  await expect(city).toContainText("No other characters here.");
+  const inRoom = (await db.doc(`characters/${invited.uid}`).get()).data();
+  assert.equal(inRoom.internalLocationId, "copper-stag");
+  await city.getByRole("button", { name: "Back to map", exact: true }).click();
+  assert.deepEqual(
+    (await db.doc(`characters/${invited.uid}`).get()).data(),
+    inRoom,
   );
-  assert.equal(
-    (await db.doc(`characters/${invited.uid}`).get()).data().internalLocationId,
-    "copper-stag",
-  );
-  await guest
-    .getByRole("button", { name: "Close dialog", exact: true })
-    .click();
   await guest.setViewportSize({ width: 390, height: 844 });
   await guest
-    .locator(".internal-entries .kingdom-card")
-    .filter({ hasText: "Town Commons" })
+    .locator(".city-return-bar")
+    .getByRole("button", { name: "Return to city", exact: true })
     .click();
-  await guest
+  await expect(city).toContainText("You are here");
+  await city.getByRole("button", { name: /Town Commons/ }).click();
+  await city
     .getByRole("button", { name: "Enter Town Commons", exact: true })
     .click();
   await expect(
-    guest.getByRole("button", {
+    city.getByRole("button", {
       name: "Resident of the Commons Keeper",
       exact: true,
     }),
   ).toBeVisible();
+  await city.getByRole("button", { name: "Leave city", exact: true }).click();
+  await expect(city).toHaveCount(0);
+  const afterLeave = (await db.doc(`characters/${invited.uid}`).get()).data();
+  assert.deepEqual(afterLeave, {
+    ...inRoom,
+    currentLocationId: null,
+    internalLocationId: null,
+  });
   console.log(
     "PASS draft map upload, published tiles and manually positioned kingdom emblem",
   );
   console.log(
-    "PASS live population, private room profiles and internal-location entry on desktop and mobile",
+    "PASS live population, private room profiles, explicit city entry, map navigation and leaving on desktop and mobile",
   );
 }

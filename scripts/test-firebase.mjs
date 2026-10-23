@@ -671,7 +671,7 @@ try {
         applicationId: data.requestId,
         decision: "approved",
       });
-      assert.equal(results[0].currentLocationId, "emberfall");
+      assert.equal(results[0].currentLocationId, null);
       assert.deepEqual(
         { x: results[0].x, y: results[0].y },
         center(hexAt(DEFAULT_WORLD.locations[0], DEFAULT_WORLD), DEFAULT_WORLD),

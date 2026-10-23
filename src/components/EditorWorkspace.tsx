@@ -114,6 +114,8 @@ export function EditorHierarchy({
   );
 }
 type RibbonProps = {
+  artworkOpacity: number;
+  onArtworkOpacity: (value: number) => void;
   category: "places" | "landscape" | "rules";
   onCategory: (category: "places" | "landscape" | "rules") => void;
   tool: EditorTool;
@@ -269,6 +271,23 @@ export function EditorRibbon(p: RibbonProps) {
             Snap to hex
           </button>
         </div>
+        {p.category !== "rules" && (
+          <label
+            className="editor-opacity"
+            title="Editor view only; player maps stay fully visible."
+          >
+            Artwork {Math.round(p.artworkOpacity * 100)}%
+            <input
+              aria-label="Map artwork opacity"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={Math.round(p.artworkOpacity * 100)}
+              onChange={(e) => p.onArtworkOpacity(Number(e.target.value) / 100)}
+            />
+          </label>
+        )}
         {p.editingBorder && (
           <div className="editor-tool-group border-ribbon">
             <button

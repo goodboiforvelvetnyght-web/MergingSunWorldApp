@@ -63,8 +63,7 @@ import {
   type Character,
   type CharacterApplication,
   populationCounts,
-  physicalSettlement,
-  commonsId,
+  enteredSettlement,
 } from "../../shared/world.js";
 setGlobalOptions({
   region: "asia-southeast1",
@@ -231,7 +230,7 @@ export const createCharacter = onCall(async (request) => {
       portrait: "",
       portraitPath,
       incarnationId: requestId,
-      currentLocationId: location.id,
+      currentLocationId: null,
       internalLocationId: null,
     };
     const submission: CharacterApplication = {
@@ -296,6 +295,11 @@ export const travel = onCall(async (request) => {
         "failed-precondition",
         "The world changed. Preview your route again.",
       );
+    if (enteredSettlement(c, w))
+      throw new HttpsError(
+        "failed-precondition",
+        "Leave the city before starting a journey.",
+      );
     const route = findRoute(hexAt(c, w), hexAt(destination, w), w);
     if (!route || !route.steps)
       throw new HttpsError(
@@ -314,16 +318,12 @@ export const travel = onCall(async (request) => {
     }
     const position = center(hexAt(destination, w), w);
     const counts = await readPopulation(tx, w);
-    const arrival = physicalSettlement(
-      { ...c, ...position, currentLocationId: null },
-      w,
-    );
     const character = {
       ...c,
       ...position,
       ...energy,
-      currentLocationId: arrival,
-      internalLocationId: arrival ? commonsId(arrival) : null,
+      currentLocationId: null,
+      internalLocationId: null,
     };
     const journey = {
       from: locationLabel(c, w),
@@ -640,6 +640,7 @@ export const publishWorld = onCall(async (request) => {
     }
     tx.set(populationRef, {
       counts: populationCounts(updatedCharacters, world),
+      presenceVersion: 2,
       updatedAt: Date.now(),
     });
     tx.set(db.doc(`worldBackups/${previous.version}`), previous);

@@ -45,6 +45,7 @@ export type EditorTool =
   | "border-point";
 type Props = {
   world: World;
+  artworkOpacity?: number;
   population?: Record<string, number>;
   onKingdom?: (id: string) => void;
   selectedKingdomId?: string;
@@ -101,7 +102,8 @@ export function WorldMap(props: Props) {
   const container = useRef<HTMLDivElement>(null),
     map = useRef<L.Map | null>(null),
     latest = useRef(props),
-    layers = useRef<Record<string, L.LayerGroup>>({});
+    layers = useRef<Record<string, L.LayerGroup>>({}),
+    artwork = useRef<L.TileLayer | null>(null);
   const [zoom, setZoom] = useState(1.5);
   const [context, setContext] = useState<{
     x: number;
@@ -413,6 +415,7 @@ export function WorldMap(props: Props) {
         ? mapTileUrl(props.world.mapAssetId)
         : "/map/tiles/{z}/{x}/{y}.webp",
       {
+        opacity: props.editor ? (props.artworkOpacity ?? 1) : 1,
         tileSize: 256,
         minZoom: -1,
         minNativeZoom: 0,
@@ -423,9 +426,11 @@ export function WorldMap(props: Props) {
         keepBuffer: 3,
       },
     ).addTo(m);
+    artwork.current = tile;
     tile.setZIndex(0);
     return () => {
       tile.remove();
+      artwork.current = null;
     };
   }, [
     props.world.mapAssetId,
@@ -433,6 +438,9 @@ export function WorldMap(props: Props) {
     props.world.mapWidth,
     props.world.mapHeight,
   ]);
+  useEffect(() => {
+    artwork.current?.setOpacity(props.editor ? (props.artworkOpacity ?? 1) : 1);
+  }, [props.editor, props.artworkOpacity]);
   useEffect(() => {
     const m = map.current;
     if (!m) return;

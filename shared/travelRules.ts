@@ -1,5 +1,5 @@
 // Bump when code changes travel semantics independently of a published world version.
-export const TRAVEL_MODEL_VERSION = 2;
+export const TRAVEL_MODEL_VERSION = 3;
 /** Stable definition IDs can also be referenced by future content definitions. */
 export const TERRAIN_TYPES = [
   "plains",
