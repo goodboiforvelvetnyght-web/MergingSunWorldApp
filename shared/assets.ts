@@ -16,3 +16,6 @@ export const mapTileUrl = (id: string) =>
     .replace(/%7D/g, "}");
 export const mapPreviewUrl = (id: string) =>
   assetUrl(`public/maps/${id}/overview.webp`);
+
+export const coverUrl = (id: string) =>
+  assetUrl(`public/covers/${id}/image.webp`);

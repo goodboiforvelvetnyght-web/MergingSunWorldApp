@@ -1,3 +1,5 @@
+import { SettlementCover } from "./components/SettlementCover";
+import { KingdomBrowser } from "./components/KingdomBrowser";
 import { MapPresentationEditor } from "./components/MapPresentation";
 import {
   DEFAULT_MAP_PRESENTATION,
@@ -63,7 +65,6 @@ import {
   ChevronRight,
   ChevronDown,
   MapPin,
-  Castle,
   Trees,
   Mountain,
   Waves,
@@ -151,12 +152,6 @@ import {
   type Point,
   type BorderPoint,
 } from "../shared/world";
-const icons = {
-  city: Castle,
-  town: MapPin,
-  village: MapPin,
-  landmark: Compass,
-};
 const terrainIcons = {
   plains: Sun,
   desert: Sun,
@@ -390,13 +385,6 @@ export default function App() {
     [character, destination?.q, destination?.r, world],
   );
   const energy = character ? energyNow(character, now) : 0;
-  const places = world.locations.filter(
-    (l) =>
-      (filter === "all" || l.kind === filter) &&
-      (l.name + " " + l.region + " " + l.summary)
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
   const selectLocation = useCallback((id: string) => {
     setSelectedId(id);
     setSelected(null);
@@ -1406,95 +1394,20 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              {tab === "atlas" &&
-                !query &&
-                filter === "all" &&
-                world.locations.length > 0 && (
-                  <button
-                    className="featured-card"
-                    onClick={() => {
-                      const l =
-                        world.locations.find((l) => l.id === "emberfall") ??
-                        world.locations[0];
-                      if (l) focusLocation(l);
-                    }}
-                  >
-                    <div className="featured-art">
-                      <div className="feature-sun" />
-                      <div className="city-silhouette">
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                        <i />
-                      </div>
-                      <span className="featured-label">
-                        BEGIN YOUR EXPLORATION
-                      </span>
-                    </div>
-                    <div className="featured-copy">
-                      <span className="eyebrow">THE HEART OF THE REACH</span>
-                      <h3>
-                        {world.locations.find((l) => l.id === "emberfall")
-                          ?.name ??
-                          world.locations[0]?.name ??
-                          "Discover the world"}
-                      </h3>
-                      <p>A thousand hearths. A thousand stories.</p>
-                      <span className="feature-link">
-                        Discover this place <ArrowUpRight size={16} />
-                      </span>
-                    </div>
-                  </button>
-                )}
-              <div className="list-heading">
-                <span>
-                  {query
-                    ? "SEARCH RESULTS"
-                    : tab === "journal"
-                      ? "LORE ENTRIES"
-                      : "PLACES TO DISCOVER"}
-                </span>
-                <span>{places.length} places</span>
-              </div>
-              <div className="place-list">
-                {places.map((l) => {
-                  const Icon = icons[l.kind];
-                  return (
-                    <button
-                      className={`place-item ${selectedId === l.id ? "selected" : ""}`}
-                      key={l.id}
-                      onClick={() => focusLocation(l)}
-                    >
-                      <span className={`place-icon ${l.kind}`}>
-                        <Icon size={20} strokeWidth={1.5} />
-                      </span>
-                      <span className="place-copy">
-                        <strong>{l.name}</strong>
-                        <small>{l.region || l.kind}</small>
-                      </span>
-                      <ChevronRight size={16} />
-                    </button>
-                  );
-                })}
-                {!places.length && (
-                  <div className="empty-state">
-                    <Search size={25} />
-                    <p>No places found.</p>
-                    <button
-                      className="text-button"
-                      onClick={() => {
-                        setQuery("");
-                        setFilter("all");
-                      }}
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                )}
-              </div>
+              <KingdomBrowser
+                world={world}
+                query={query}
+                filter={filter}
+                lore={tab === "journal"}
+                selectedId={selectedId}
+                onLocation={focusLocation}
+                onEntry={setViewEntry}
+                onKingdom={(k) => mapRef.current?.focusBounds(k.points)}
+                onClear={() => {
+                  setQuery("");
+                  setFilter("all");
+                }}
+              />
               <div className="sidebar-tip">
                 <Compass size={22} strokeWidth={1.3} />
                 <p>
@@ -2535,8 +2448,9 @@ export default function App() {
               <div
                 className={`detail-illustration ${location?.kind ?? "wilds"}`}
               >
-                <div className="detail-sun" />
-                <div className="detail-hills" />
+                <SettlementCover
+                  location={location ?? { name: "The open road" }}
+                />
                 <span className="detail-kind">
                   {location ? location.kind.toUpperCase() : "THE OPEN ROAD"}
                 </span>
@@ -2972,6 +2886,7 @@ export default function App() {
           <PropertyPortal>
             <LocationForm
               inline
+              demo={isDemo}
               location={editLocation}
               key={editLocation.id}
               kingdoms={draft.territories}

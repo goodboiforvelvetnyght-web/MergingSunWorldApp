@@ -4224,3 +4224,93 @@ input[type="range"] {
   width: 110px;
   padding: 8px;
 }
+
+.settlement-cover {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #bdc5a1;
+}
+.settlement-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.detail-illustration > .settlement-cover {
+  position: absolute;
+  inset: 0;
+}
+.city-cover-banner {
+  height: clamp(160px, 25vw, 300px);
+  flex-shrink: 0;
+}
+.cover-edit-preview {
+  height: 150px;
+  overflow: hidden;
+  border-radius: 6px;
+}
+.browse-controls {
+  display: flex;
+  gap: 20px;
+  margin: 18px 0;
+}
+.browse-controls .active {
+  font-weight: 700;
+  text-decoration: underline;
+}
+.kingdom-browse-list {
+  display: grid;
+  gap: 10px;
+}
+.browse-kingdom-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: left;
+  background: #f0f1e7;
+  border: 1px solid #dfe2d3;
+  border-radius: 6px;
+  color: #344c3b;
+}
+.browse-kingdom-card img {
+  width: 40px;
+  height: 44px;
+  object-fit: contain;
+}
+.browse-kingdom-card > span {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+.browse-kingdom-card small {
+  font-size: 11px;
+  opacity: 0.7;
+}
+.browse-kingdom-intro h2 {
+  font-family: var(--serif);
+  font-size: 28px;
+}
+.browse-kingdom-group > h3 {
+  font: 500 18px var(--serif);
+  margin-top: 22px;
+}
+.browse-kingdom-intro .lore-content {
+  font-size: 13px;
+}
+.browse-entries {
+  padding-left: 44px;
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 14px;
+}
+.browse-entries .text-button {
+  text-align: left;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}

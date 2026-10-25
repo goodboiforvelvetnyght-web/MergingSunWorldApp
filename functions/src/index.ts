@@ -515,7 +515,14 @@ function validateWorld(input: unknown): World {
       !["town", "city", "village", "landmark"].includes(l.kind) ||
       typeof l.starting !== "boolean" ||
       (l.harbour !== undefined && typeof l.harbour !== "boolean") ||
-      (l.harbour === true && l.kind === "landmark")
+      (l.harbour === true && l.kind === "landmark") ||
+      (l.coverAssetId != null &&
+        (typeof l.coverAssetId !== "string" ||
+          !/^[\w-]{36}$/.test(l.coverAssetId))) ||
+      (l.coverPosition !== undefined &&
+        (!Number.isFinite(l.coverPosition) ||
+          l.coverPosition < 0 ||
+          l.coverPosition > 100))
     )
       throw new HttpsError("invalid-argument", "Invalid location.");
     const id = uniqueId(l.id, "settlement ID");
@@ -563,6 +570,8 @@ function validateWorld(input: unknown): World {
       lore: textField(l.lore, "lore", 60000, false),
       starting: l.starting,
       harbour: l.harbour ?? false,
+      coverAssetId: l.coverAssetId ?? null,
+      coverPosition: l.coverPosition ?? 50,
     };
   });
   const clean: World = {
@@ -632,6 +641,9 @@ export const publishWorld = onCall(async (request) => {
   else delete world.mapLayout;
   await Promise.all(
     world.territories.map((k) => validateAsset(k.emblemAssetId, "emblem")),
+  );
+  await Promise.all(
+    world.locations.map((l) => validateAsset(l.coverAssetId, "cover")),
   );
   return db.runTransaction(async (tx) => {
     const current = await tx.get(worldRef),

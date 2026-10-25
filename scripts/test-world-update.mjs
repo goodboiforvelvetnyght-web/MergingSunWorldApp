@@ -520,7 +520,7 @@ export async function testWorldUpdate({
       );
     },
   );
-  let emblem, map;
+  let emblem, map, cover;
   await check(
     "admin images preserve flag proportions and generate complete public map tiles",
     async () => {
@@ -537,11 +537,23 @@ export async function testWorldUpdate({
       );
       emblem = (await admin.call("uploadWorldAsset", { kind: "emblem", image }))
         .id;
+      cover = (await admin.call("uploadWorldAsset", { kind: "cover", image }))
+        .id;
+      await assert.rejects(
+        first.call("uploadWorldAsset", { kind: "cover", image }),
+        (e) => e.code === "functions/permission-denied",
+      );
       map = (await admin.call("uploadWorldAsset", { kind: "map", image })).id;
       const storage = getStorage(
         first.auth.app,
         "gs://demo-merging-sun.appspot.com",
       );
+      const coverBytes = await getBytes(
+        ref(storage, `public/covers/${cover}/image.webp`),
+      );
+      const coverMeta = await sharp(Buffer.from(coverBytes)).metadata();
+      assert.equal(coverMeta.format, "webp");
+      assert(coverMeta.width <= 1920 && coverMeta.height <= 1920);
       const flag = Buffer.from(
         await getBytes(ref(storage, `public/emblems/${emblem}/image.webp`)),
       );
@@ -602,10 +614,34 @@ export async function testWorldUpdate({
         }),
         (e) => e.code === "functions/failed-precondition",
       );
+      for (const patch of [
+        { coverPosition: -1 },
+        { coverPosition: 101 },
+        { coverAssetId: emblem },
+        { coverAssetId: crypto.randomUUID() },
+      ])
+        await assert.rejects(
+          admin.call("publishWorld", {
+            world: {
+              ...w,
+              locations: w.locations.map((l, i) =>
+                i === 0 ? { ...l, ...patch } : l,
+              ),
+            },
+          }),
+          (e) =>
+            [
+              "functions/invalid-argument",
+              "functions/failed-precondition",
+            ].includes(e.code),
+        );
       const updated = await admin.call("publishWorld", {
         world: {
           ...w,
           mapAssetId: map,
+          locations: w.locations.map((l, i) =>
+            i === 0 ? { ...l, coverAssetId: cover, coverPosition: 23 } : l,
+          ),
           territories: w.territories.map((k) => ({
             ...k,
             emblemAssetId: emblem,
@@ -617,6 +653,8 @@ export async function testWorldUpdate({
         (await db.doc(`characters/${first.auth.currentUser.uid}`).get()).data(),
         before,
       );
+      assert.equal(updated.locations[0].coverAssetId, cover);
+      assert.equal(updated.locations[0].coverPosition, 23);
       assert.equal(updated.mapAssetId, map);
       assert.equal(updated.mapNativeZoom, 4);
       assert.equal(updated.territories[0].emblemAssetId, emblem);

@@ -73,6 +73,8 @@ export type Location = {
   lore: string;
   starting: boolean;
   harbour?: boolean;
+  coverAssetId?: string | null;
+  coverPosition?: number;
 };
 export type Kingdom = {
   id: string;

@@ -1,3 +1,4 @@
+import { SettlementCover } from "./SettlementCover";
 import { useState, useEffect } from "react";
 import { ArrowLeft, DoorOpen, BookOpen, MapPin, Users } from "lucide-react";
 import DOMPurify from "dompurify";
@@ -87,6 +88,9 @@ export function CityView({
               : "Reading city lore"}
         </span>
       </header>
+      <div className="city-cover-banner">
+        <SettlementCover location={location} />
+      </div>
       <div className="city-heading">
         <span className="eyebrow">
           {kingdom?.name ?? "Independent settlement"} · {location.kind}

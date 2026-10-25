@@ -10,7 +10,7 @@ export function WorldAssetUpload({
   onBusyChange,
   demo = false,
 }: {
-  kind: "map" | "emblem";
+  kind: "map" | "emblem" | "cover";
   value?: string | null;
   onChange: (
     id: string | null,
@@ -36,10 +36,17 @@ export function WorldAssetUpload({
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
+  const cover = kind === "cover";
   return (
     <div className="asset-upload form-stack">
-      <h3>{kind === "map" ? "Map artwork" : "Coat of arms or flag"}</h3>
-      {value && (
+      <h3>
+        {kind === "map"
+          ? "Map artwork"
+          : cover
+            ? "Settlement cover"
+            : "Coat of arms or flag"}
+      </h3>
+      {value && !cover && (
         <img
           className={kind === "map" ? "map-art-preview" : "emblem-preview"}
           src={kind === "map" ? mapPreviewUrl(value) : emblemUrl(value)}
@@ -49,7 +56,11 @@ export function WorldAssetUpload({
         />
       )}
       <label>
-        {kind === "map" ? "Upload map artwork" : "Upload coat of arms or flag"}
+        {kind === "map"
+          ? "Upload map artwork"
+          : cover
+            ? "Upload settlement cover"
+            : "Upload coat of arms or flag"}
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp"
@@ -112,7 +123,9 @@ export function WorldAssetUpload({
           <p>
             {kind === "map"
               ? (progress?.detail ?? "Checking map file…")
-              : "Preparing emblem…"}
+              : cover
+                ? "Preparing cover…"
+                : "Preparing emblem…"}
           </p>
           {kind === "map" && (
             <>
@@ -144,7 +157,9 @@ export function WorldAssetUpload({
       <p className="fine-print">
         {kind === "map"
           ? "PNG, JPEG, or WebP, up to 25 MB, 8192 pixels on the longest side, and 64 megapixels. Natural proportions are preserved. The original stays private. Review alignment and preview the draft before publishing."
-          : "PNG, JPEG, or WebP, up to 6 MB. Transparent backgrounds and flag proportions are preserved. Changes appear after publishing the world."}
+          : cover
+            ? "PNG, JPEG, or WebP, up to 6 MB and 64 megapixels. The cover appears after publishing the world."
+            : "PNG, JPEG, or WebP, up to 6 MB. Transparent backgrounds and flag proportions are preserved. Changes appear after publishing the world."}
       </p>
       {value && (
         <button
@@ -153,7 +168,11 @@ export function WorldAssetUpload({
           disabled={busy}
           onClick={() => onChange(null)}
         >
-          {kind === "map" ? "Restore placeholder artwork" : "Remove emblem"}
+          {kind === "map"
+            ? "Restore placeholder artwork"
+            : cover
+              ? "Remove cover"
+              : "Remove emblem"}
         </button>
       )}
     </div>

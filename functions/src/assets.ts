@@ -46,7 +46,7 @@ export const uploadWorldAsset = onCall(
     await requireAdmin(request.auth);
     const { kind, image } = request.data ?? {};
     if (
-      !["map", "emblem"].includes(kind) ||
+      !["map", "emblem", "cover"].includes(kind) ||
       typeof image !== "string" ||
       image.length > 8400000 ||
       !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(image)
@@ -97,7 +97,14 @@ export const uploadWorldAsset = onCall(
       bytes: bytes.length,
     });
     try {
-      if (kind === "emblem") {
+      if (kind === "cover") {
+        const buffer = await sharp(bytes, { limitInputPixels: 64000000 })
+          .rotate()
+          .resize(1920, 1920, { fit: "inside", withoutEnlargement: true })
+          .webp({ quality: 85 })
+          .toBuffer();
+        await save(`public/covers/${id}/image.webp`, buffer);
+      } else if (kind === "emblem") {
         const buffer = await sharp(bytes, { limitInputPixels: 64000000 })
           .rotate()
           .resize(256, 256, { fit: "inside", withoutEnlargement: true })

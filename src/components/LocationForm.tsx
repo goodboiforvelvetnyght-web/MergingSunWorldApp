@@ -1,3 +1,5 @@
+import { WorldAssetUpload } from "./WorldAssets";
+import { SettlementCover } from "./SettlementCover";
 import { useEffect, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
 import { EditorFormFrame } from "./EditorWorkspace";
@@ -7,6 +9,7 @@ import { readLocal, saveLocal } from "../useWorld";
 export default function LocationForm({
   location,
   inline = false,
+  demo = false,
   scope,
   kingdoms,
   mapSize = { width: 2400, height: 1800 },
@@ -16,6 +19,7 @@ export default function LocationForm({
 }: {
   location: Location;
   inline?: boolean;
+  demo?: boolean;
   scope: string;
   kingdoms: Kingdom[];
   mapSize?: { width: number; height: number };
@@ -27,6 +31,7 @@ export default function LocationForm({
   const [value, setValue] = useState<Location>(() =>
       readLocal(storageKey, location),
     ),
+    [uploading, setUploading] = useState(false),
     [saved, setSaved] = useState(true),
     [confirm, setConfirm] = useState(false);
   useEffect(() => {
@@ -161,6 +166,28 @@ export default function LocationForm({
           Allows sailing to other harbours for a flat energy cost. Harbour
           placement is the editor’s responsibility.
         </p>
+        <div className="cover-edit-preview" aria-label="Cover crop preview">
+          <SettlementCover location={value} />
+        </div>
+        <WorldAssetUpload
+          kind="cover"
+          value={value.coverAssetId}
+          demo={demo}
+          onBusyChange={setUploading}
+          onChange={(id) => field("coverAssetId", id)}
+        />
+        <label>
+          Cover focal point
+          <input
+            aria-label="Cover focal point"
+            type="range"
+            min={0}
+            max={100}
+            value={value.coverPosition ?? 50}
+            onChange={(e) => field("coverPosition", Number(e.target.value))}
+          />
+          <small>Top to bottom · preview the banner crop above</small>
+        </label>
         <div>
           <label className="field-label">Location lore</label>
           <LoreEditor
@@ -177,6 +204,7 @@ export default function LocationForm({
           <button
             className="button primary"
             disabled={
+              uploading ||
               !value.name.trim() ||
               !kingdoms.some((k) => k.id === value.kingdomId) ||
               value.lore.length > 60000

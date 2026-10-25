@@ -62,3 +62,23 @@ The character-creation map uses these same published zoom, icon and label settin
 Kingdom borders remain selectable and the birthplace lists remain available when
 an icon is hidden at the current zoom. Selecting a kingdom or home city can focus
 the map, within the configured zoom limits.
+
+### Settlement covers
+
+Settlement details include **Upload settlement cover**, **Cover focal point** and
+**Remove cover**. Covers use public Firebase Storage artwork processed by the
+admin-only image service (PNG/JPEG/WebP, up to 6 MB and 64 megapixels, optimized
+to WebP up to 1920 pixels). The focal point chooses the vertical crop, with a
+banner preview. Save to the world draft and publish to show it in the map's place
+panel and the full city page. Missing or unavailable covers use the placeholder.
+Replacing/removing a draft cover does not remove older published image files.
+
+### Atlas and Lore browsing
+
+Both tabs open with kingdoms. Selecting a kingdom reveals its settlements; Atlas
+focuses the map, and Lore also presents the kingdom's lore and direct links to
+internal encyclopedia entries. **All places** groups settlements across kingdoms.
+Search finds settlements across all kingdoms, including when a kingdom is selected;
+Lore search also matches internal entry names and summaries. Independent places
+are excluded from these browser lists and searches. Editing and existing direct
+map/location links are unaffected. Guild browsing will be added with guilds.
