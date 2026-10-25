@@ -543,6 +543,7 @@ input[type="range"] {
 }
 .portrait {
   background: radial-gradient(circle at 30% 20%, #788b68, #344d3c);
+  overflow: hidden;
   border: 2px solid #e4ddbf;
   box-shadow: 0 0 0 1px #b7ba97;
   border-radius: 50%;
