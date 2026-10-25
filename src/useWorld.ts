@@ -26,6 +26,7 @@ export function useCloud() {
     [roleAdmin, setRoleAdmin] = useState(false),
     [world, setWorld] = useState<World>(DEFAULT_WORLD),
     [application, setApplication] = useState<CharacterApplication | null>(null),
+    [hexPopulation, setHexPopulation] = useState<Record<string, number>>({}),
     [population, setPopulation] = useState<Record<string, number>>({}),
     [character, setCharacter] = useState<Character | null>(null),
     [journeys, setJourneys] = useState<Journey[]>([]),
@@ -117,7 +118,12 @@ export function useCloud() {
     () =>
       onSnapshot(
         doc(db, "population", "main"),
-        (s) => setPopulation(s.data()?.counts ?? {}),
+        (s) => {
+          setPopulation(s.data()?.counts ?? {});
+          setHexPopulation(
+            s.data()?.presenceVersion === 3 ? (s.data()?.hexCounts ?? {}) : {},
+          );
+        },
         () => {},
       ),
     [],
@@ -131,6 +137,7 @@ export function useCloud() {
     character,
     application,
     population,
+    hexPopulation,
     journeys,
     status,
   };

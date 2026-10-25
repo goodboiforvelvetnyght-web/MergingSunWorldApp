@@ -29,6 +29,7 @@ export {
   reviewCharacter,
   enterLocation,
   getRoomCharacters,
+  getHexCharacters,
   getCharacterPortrait,
   initializePopulation,
   migrateLegacyPortraits,
@@ -73,6 +74,8 @@ import {
   type Character,
   type CharacterApplication,
   populationCounts,
+  hexPopulationCounts,
+  key,
   enteredSettlement,
 } from "../../shared/world.js";
 setGlobalOptions({
@@ -334,6 +337,7 @@ export const travel = onCall(async (request) => {
           e instanceof Error ? e.message : "Cannot sail.",
         );
       }
+      character = { ...character, hexKey: key(hexAt(character, w)) };
       const counts = await readPopulation(tx, w);
       const journey = {
         from: w.locations.find((l) => l.id === fromLocationId)!.name,
@@ -373,6 +377,7 @@ export const travel = onCall(async (request) => {
     const character = {
       ...c,
       ...position,
+      hexKey: key(hexAt(position, w)),
       ...energy,
       currentLocationId: null,
       internalLocationId: null,
@@ -702,11 +707,8 @@ export const publishWorld = onCall(async (request) => {
           "failed-precondition",
           "A character is outside the new map. Choose Fit existing world or move characters out of the old padding first.",
         );
-      const updated = characterAfterWorldChange(
-        aligned,
-        world,
-        geometryChanged,
-      );
+      const moved = characterAfterWorldChange(aligned, world, geometryChanged);
+      const updated = { ...moved, hexKey: key(hexAt(moved, world)) };
       if (
         !Number.isFinite(
           entryCost(tileAt(hexAt(updated, world), world), world),
@@ -727,7 +729,8 @@ export const publishWorld = onCall(async (request) => {
     }
     tx.set(populationRef, {
       counts: populationCounts(updatedCharacters, world),
-      presenceVersion: 2,
+      hexCounts: hexPopulationCounts(updatedCharacters, world),
+      presenceVersion: 3,
       updatedAt: Date.now(),
     });
     tx.set(

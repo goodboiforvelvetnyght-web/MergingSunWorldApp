@@ -428,7 +428,10 @@ try {
       });
       assert.deepEqual(
         (await db.doc(`characters/${p.user.uid}`).get()).data(),
-        before,
+        {
+          ...before,
+          hexKey: key(hexAt(before, { ...empty, radius: 50, offsetX: 5 })),
+        },
       );
     },
   );

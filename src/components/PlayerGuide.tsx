@@ -67,7 +67,8 @@ export function PlayerGuide({
               Arriving on a city's hex leaves you outside. Choose Enter city to
               go inside and visit its internal locations. Back to map only
               changes your view; Leave city takes your character outside so you
-              can travel again.
+              can travel again. Click an occupied hex’s count to read other
+              characters on your hex, including those inside cities or rooms.
             </p>
           </div>
         </section>

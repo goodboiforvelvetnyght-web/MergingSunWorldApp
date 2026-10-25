@@ -60,13 +60,11 @@ test("creation fills the viewport, supports lore and portraits, and replaces onl
     ctx.fillRect(0, 0, 40, 40);
     return c.toDataURL("image/png").split(",")[1];
   });
-  await page
-    .getByLabel("Choose a portrait")
-    .setInputFiles({
-      name: "portrait.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(png, "base64"),
-    });
+  await page.getByLabel("Choose a portrait").setInputFiles({
+    name: "portrait.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(png, "base64"),
+  });
   await expect(page.getByAltText("Character portrait preview")).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(
@@ -194,4 +192,45 @@ test("admin activation has a dedicated sign-in page", async ({ page }) => {
   await expect(
     page.getByRole("dialog", { name: "Welcome back, traveler" }),
   ).toBeVisible();
+});
+
+test("birth-city selection hides kingdom emblems and centers the available starting cities", async ({
+  page,
+}) => {
+  await openCreation(page);
+  await page.getByLabel("Character name", { exact: true }).fill("Homeward");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.locator(".kingdom-map-emblem").first()).toBeVisible();
+  await page
+    .getByRole("button", { name: "The Sunward Reach", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.locator(".kingdom-map-emblem")).toHaveCount(0);
+  await expect(
+    page.locator('.location-marker[title="Emberfall"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('.location-marker[title="Thornwatch"]'),
+  ).toBeVisible();
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const map = document
+          .querySelector('[data-testid="world-map"]')!
+          .getBoundingClientRect();
+        const a = document
+            .querySelector('.location-marker[title="Emberfall"]')!
+            .getBoundingClientRect(),
+          b = document
+            .querySelector('.location-marker[title="Thornwatch"]')!
+            .getBoundingClientRect();
+        return Math.hypot(
+          (a.left + a.width / 2 + b.left + b.width / 2) / 2 -
+            (map.left + map.width / 2),
+          (a.top + a.height / 2 + b.top + b.height / 2) / 2 -
+            (map.top + map.height / 2),
+        );
+      }),
+    )
+    .toBeLessThan(20);
 });

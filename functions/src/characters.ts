@@ -12,6 +12,9 @@ import {
   physicalSettlement,
   enteredSettlement,
   populationCounts,
+  hexPopulationCounts,
+  sameCharacterHex,
+  key,
   hexAt,
   tileAt,
   entryCost,
@@ -27,31 +30,54 @@ const options = {
 export const populationRef = db.doc("population/main");
 export async function readPopulation(tx: Transaction, w: World) {
   const s = await tx.get(populationRef);
-  if (s.exists && s.data()?.presenceVersion === 2)
-    return { ...s.data()!.counts } as Record<string, number>;
+  if (s.exists && s.data()?.presenceVersion === 3)
+    return {
+      counts: { ...s.data()!.counts } as Record<string, number>,
+      hexCounts: { ...s.data()!.hexCounts } as Record<string, number>,
+    };
   const chars = await tx.get(db.collection("characters").limit(401));
   if (chars.size > 400)
     throw new HttpsError(
       "resource-exhausted",
       "Population migration is required for more than 400 characters.",
     );
-  return populationCounts(
-    chars.docs.map((d) => d.data() as Character),
-    w,
-  );
+  const characters = chars.docs.map((d) => d.data() as Character);
+  for (const d of chars.docs)
+    tx.set(
+      d.ref,
+      { hexKey: key(hexAt(d.data() as Character, w)) },
+      { merge: true },
+    );
+  return {
+    counts: populationCounts(characters, w),
+    hexCounts: hexPopulationCounts(characters, w),
+  };
 }
 export function updatePopulation(
   tx: Transaction,
-  counts: Record<string, number>,
+  state: { counts: Record<string, number>; hexCounts: Record<string, number> },
   before: Character | null,
   after: Character | null,
   w: World,
 ) {
+  const { counts, hexCounts } = state;
   const a = before && enteredSettlement(before, w),
     b = after && enteredSettlement(after, w);
   if (a) counts[a] = Math.max(0, (counts[a] ?? 0) - 1);
   if (b) counts[b] = (counts[b] ?? 0) + 1;
-  tx.set(populationRef, { counts, presenceVersion: 2, updatedAt: Date.now() });
+  const from = before && key(hexAt(before, w)),
+    to = after && key(hexAt(after, w));
+  if (from) {
+    hexCounts[from] = Math.max(0, (hexCounts[from] ?? 0) - 1);
+    if (!hexCounts[from]) delete hexCounts[from];
+  }
+  if (to) hexCounts[to] = (hexCounts[to] ?? 0) + 1;
+  tx.set(populationRef, {
+    counts,
+    hexCounts,
+    presenceVersion: 3,
+    updatedAt: Date.now(),
+  });
 }
 export const initializePopulation = onCall(options, async (request) => {
   if (!request.auth)
@@ -66,11 +92,11 @@ export const initializePopulation = onCall(options, async (request) => {
       normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World),
     );
     tx.set(populationRef, {
-      counts,
-      presenceVersion: 2,
+      ...counts,
+      presenceVersion: 3,
       updatedAt: Date.now(),
     });
-    return { counts };
+    return counts;
   });
 });
 export const reviewCharacter = onCall(options, async (request) => {
@@ -148,6 +174,7 @@ export const reviewCharacter = onCall(options, async (request) => {
         energy: 100,
         energyAt: now,
         approvedAt: now,
+        hexKey: key(hexAt(location, w)),
         currentLocationId: null,
         internalLocationId: null,
       };
@@ -241,73 +268,74 @@ export const enterLocation = onCall(options, async (request) => {
       }
     }
     const counts = await readPopulation(tx, w);
+    updated = { ...updated, hexKey: key(hexAt(updated, w)) };
     tx.set(ref, updated);
     updatePopulation(tx, counts, c, updated, w);
     return updated;
   });
 });
-export const getRoomCharacters = onCall(options, async (request) => {
+export const getHexCharacters = onCall(options, async (request) => {
   if (!request.auth)
     throw new HttpsError(
       "unauthenticated",
       "Sign in to meet other characters.",
     );
   return db.runTransaction(async (tx) => {
-    const [cs, ws] = await Promise.all([
+    const [cs, ws, ps] = await Promise.all([
       tx.get(db.doc(`characters/${request.auth!.uid}`)),
       tx.get(db.doc("worlds/main")),
+      tx.get(populationRef),
     ]);
     const c = cs.data() as Character | undefined,
       w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
-    const loc =
-      c &&
-      w.locations.find(
-        (l) =>
-          l.id === c.currentLocationId && physicalSettlement(c, w) === l.id,
+    if (!c)
+      throw new HttpsError(
+        "permission-denied",
+        "An approved character on this hex is required.",
       );
+    const hex = key(hexAt(c, w));
     if (
-      !c ||
-      !loc ||
-      !c.internalLocationId ||
-      !internalLocations(loc).some((e) => e.id === c.internalLocationId)
+      (request.data?.hexKey !== undefined && request.data.hexKey !== hex) ||
+      (request.data?.worldVersion !== undefined &&
+        request.data.worldVersion !== w.version) ||
+      (request.data?.generation !== undefined &&
+        request.data.generation !== characterGeneration(c))
     )
       throw new HttpsError(
         "permission-denied",
-        "Enter an internal location to meet the people there.",
+        "Your character must be on this hex. Reopen its character list.",
       );
     const residents = await tx.get(
-      db
-        .collection("characters")
-        .where("internalLocationId", "==", c.internalLocationId)
-        .limit(401),
+      ps.data()?.presenceVersion === 3
+        ? db.collection("characters").where("hexKey", "==", hex).limit(401)
+        : db.collection("characters").limit(401),
     );
     if (residents.size > 400)
       throw new HttpsError(
         "resource-exhausted",
-        "This room requires paginated character browsing.",
+        "This hex requires paginated character browsing.",
       );
     return residents.docs
       .filter((d) => d.id !== request.auth!.uid)
       .flatMap((d) => {
         const p = d.data() as Character;
-        if (
-          p.currentLocationId !== loc.id ||
-          physicalSettlement(p, w) !== loc.id
-        )
-          return [];
-        return [
-          {
-            uid: d.id,
-            name: p.name,
-            title: p.title,
-            bio: p.bio,
-            originLocationId: p.originLocationId,
-            hasPortrait: !!(p.portraitPath || p.portrait),
-          },
-        ];
+        return sameCharacterHex(c, p, w)
+          ? [
+              {
+                uid: d.id,
+                name: p.name,
+                title: p.title,
+                bio: p.bio,
+                originLocationId: p.originLocationId,
+                hasPortrait: !!(p.portraitPath || p.portrait),
+              },
+            ]
+          : [];
       });
   });
 });
+// Keep older browser tabs compatible with the expanded profile visibility rule.
+export const getRoomCharacters = getHexCharacters;
 export const getCharacterPortrait = onCall(
   { ...options, memory: "256MiB" },
   async (request) => {
@@ -341,21 +369,11 @@ export const getCharacterPortrait = onCall(
           tx.get(db.doc("worlds/main")),
         ]);
         const v = viewer.data() as Character | undefined,
-          w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World),
-          loc = w.locations.find((l) => l.id === c.currentLocationId);
-        if (
-          !v ||
-          !loc ||
-          !c.internalLocationId ||
-          v.internalLocationId !== c.internalLocationId ||
-          v.currentLocationId !== loc.id ||
-          !internalLocations(loc).some((e) => e.id === c.internalLocationId) ||
-          physicalSettlement(v, w) !== loc.id ||
-          physicalSettlement(c, w) !== loc.id
-        )
+          w = normalizeWorld((ws.data() ?? DEFAULT_WORLD) as World);
+        if (!v || !sameCharacterHex(v, c, w))
           throw new HttpsError(
             "permission-denied",
-            "You can inspect characters only in the same internal location.",
+            "You can inspect characters only on the same hex.",
           );
       }
       return c;

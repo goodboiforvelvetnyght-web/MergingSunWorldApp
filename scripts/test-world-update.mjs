@@ -16,6 +16,7 @@ import {
   internalLocations,
   characterGeneration,
   populationCounts,
+  hexPopulationCounts,
   DEFAULT_WORLD,
   allHexes,
   key,
@@ -285,7 +286,7 @@ export async function testWorldUpdate({
     },
   );
   await check(
-    "explicit city entry and leaving preserve energy, enforce room privacy, and gate travel",
+    "explicit city entry and leaving preserve energy and hex population while gating walking",
     async () => {
       const uid = first.auth.currentUser.uid,
         ref = db.doc(`characters/${uid}`);
@@ -333,6 +334,8 @@ export async function testWorldUpdate({
         first.call("enterLocation", { ...base, action: "invalid" }),
         (e) => e.code === "functions/invalid-argument",
       );
+      const hexBeforeEntry = (await db.doc("population/main").get()).data()
+        .hexCounts;
       const initialCounts = (await db.doc("population/main").get()).data()
         .counts;
       const inside = await first.call("enterLocation", {
@@ -348,10 +351,11 @@ export async function testWorldUpdate({
         (await db.doc("population/main").get()).data().counts.emberfall,
         (initialCounts.emberfall ?? 0) + 1,
       );
-      await assert.rejects(
-        first.call("getRoomCharacters", {}),
-        (e) => e.code === "functions/permission-denied",
+      assert.deepEqual(
+        (await db.doc("population/main").get()).data().hexCounts,
+        hexBeforeEntry,
       );
+      assert(Array.isArray(await first.call("getRoomCharacters", {})));
       await assert.rejects(
         first.call("travel", {
           destination: DEFAULT_WORLD.locations[1],
@@ -389,9 +393,10 @@ export async function testWorldUpdate({
         await first.call("enterLocation", { ...base, action: "leave-city" }),
         before,
       );
-      await assert.rejects(
-        first.call("getRoomCharacters", {}),
-        (e) => e.code === "functions/permission-denied",
+      assert(Array.isArray(await first.call("getRoomCharacters", {})));
+      assert.deepEqual(
+        (await db.doc("population/main").get()).data().hexCounts,
+        hexBeforeEntry,
       );
       assert.equal(
         (await db.doc("population/main").get()).data().counts.emberfall ?? 0,
@@ -415,7 +420,7 @@ export async function testWorldUpdate({
     },
   );
   await check(
-    "same-room profiles exclude real names and review data; other locations cannot inspect",
+    "same-hex profiles include city and room occupants, exclude private data, and block remote reads",
     async () => {
       await create(second, secondId);
       await admin.call("reviewCharacter", {
@@ -438,6 +443,7 @@ export async function testWorldUpdate({
           generation,
         });
       }
+      const w = normalizeWorld((await db.doc("worlds/main").get()).data());
       const people = await first.call("getRoomCharacters", {}),
         p = people.find((p) => p.uid === second.auth.currentUser.uid);
       assert(p);
@@ -470,7 +476,38 @@ export async function testWorldUpdate({
         generation: firstId,
       });
       assert(
-        !(await first.call("getRoomCharacters", {})).some(
+        (await first.call("getHexCharacters", {})).some(
+          (p) => p.uid === second.auth.currentUser.uid,
+        ),
+      );
+      await first.call("enterLocation", {
+        action: "leave-city",
+        locationId: "emberfall",
+        generation: firstId,
+      });
+      assert(
+        (await first.call("getHexCharacters", {})).some(
+          (p) => p.uid === second.auth.currentUser.uid,
+        ),
+      );
+      assert.match(
+        (
+          await first.call("getCharacterPortrait", {
+            uid: second.auth.currentUser.uid,
+          })
+        ).image,
+        /^data:image\/webp;base64,/,
+      );
+      await assert.rejects(
+        first.call("getHexCharacters", { hexKey: "-100,-100" }),
+        (e) => e.code === "functions/permission-denied",
+      );
+      const targetRef = db.doc(`characters/${second.auth.currentUser.uid}`),
+        original = (await targetRef.get()).data();
+      const far = center({ q: 2, r: 2 }, w);
+      await targetRef.update({ ...far, hexKey: key(hexAt(far, w)) });
+      assert(
+        !(await first.call("getHexCharacters", {})).some(
           (p) => p.uid === second.auth.currentUser.uid,
         ),
       );
@@ -480,6 +517,7 @@ export async function testWorldUpdate({
         }),
         (e) => e.code === "functions/permission-denied",
       );
+      await targetRef.set(original);
       await assert.rejects(
         first.call("enterLocation", {
           locationId: "sunspire",
@@ -494,6 +532,35 @@ export async function testWorldUpdate({
           generation: firstId,
         }),
       );
+    },
+  );
+  await check(
+    "legacy population migrates to occupied hexes without changing positions or energy",
+    async () => {
+      const w = normalizeWorld((await db.doc("worlds/main").get()).data());
+      const chars = await db.collection("characters").get();
+      const before = chars.docs.map((d) => ({ id: d.id, ...d.data() }));
+      await db
+        .doc("population/main")
+        .set({ counts: populationCounts(before, w), presenceVersion: 2 });
+      const result = await first.call("initializePopulation", {});
+      assert.deepEqual(result.hexCounts, hexPopulationCounts(before, w));
+      const population = (await db.doc("population/main").get()).data();
+      assert.equal(population.presenceVersion, 3);
+      assert.deepEqual(population.hexCounts, hexPopulationCounts(before, w));
+      for (const c of before) {
+        const updated = (await db.doc(`characters/${c.id}`).get()).data();
+        assert.equal(updated.hexKey, key(hexAt(c, w)));
+        for (const field of [
+          "x",
+          "y",
+          "energy",
+          "energyAt",
+          "currentLocationId",
+          "internalLocationId",
+        ])
+          assert.equal(updated[field], c[field]);
+      }
     },
   );
   await check(
@@ -728,6 +795,12 @@ export async function testWorldUpdate({
           w,
         ),
         currentLocationId: "emberfall",
+        hexKey: key(
+          hexAt(
+            w.locations.find((l) => l.id === "emberfall"),
+            w,
+          ),
+        ),
         internalLocationId: "copper-stag",
         energy: 30,
         energyAt: Date.now(),
@@ -737,6 +810,10 @@ export async function testWorldUpdate({
       await pop.set({
         ...(await pop.get()).data(),
         counts: populationCounts(
+          (await db.collection("characters").get()).docs.map((d) => d.data()),
+          w,
+        ),
+        hexCounts: hexPopulationCounts(
           (await db.collection("characters").get()).docs.map((d) => d.data()),
           w,
         ),
@@ -769,6 +846,13 @@ export async function testWorldUpdate({
       assert.equal(arrived.energy, 23);
       assert.equal(arrived.currentLocationId, "sunspire");
       assert.equal(arrived.internalLocationId, null);
+      assert.deepEqual(
+        (await db.doc("population/main").get()).data().hexCounts,
+        hexPopulationCounts(
+          (await db.collection("characters").get()).docs.map((d) => d.data()),
+          w,
+        ),
+      );
       assert.deepEqual(
         { x: arrived.x, y: arrived.y },
         center(

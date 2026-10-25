@@ -55,10 +55,13 @@ type Props = {
   artworkOpacity?: number;
   presentationPreview?: boolean;
   population?: Record<string, number>;
+  hexPopulation?: Record<string, number>;
+  onHexPeople?: (hex: Hex) => void;
   onKingdom?: (id: string) => void;
   selectedKingdomId?: string;
   fitWholeWorld?: boolean;
   kingdomSelection?: boolean;
+  kingdomLabels?: boolean;
   character: Character | null;
   selected: Hex | null;
   route: Route | null;
@@ -192,6 +195,7 @@ export function WorldMap(props: Props) {
     for (const name of [
       "territories",
       "emblems",
+      "population",
       "roads",
       "grid",
       "route",
@@ -527,7 +531,12 @@ export function WorldMap(props: Props) {
     if (!layer) return;
     layer.clearLayers();
     const appearance = iconPresentation(presentation.icons.kingdom, zoom);
-    if (!appearance.visible || (props.editor && props.tool !== "pan")) return;
+    if (
+      props.kingdomLabels === false ||
+      !appearance.visible ||
+      (props.editor && props.tool !== "pan")
+    )
+      return;
     for (const k of props.world.territories) {
       const p = k.emblemPosition ?? {
         x: k.points.reduce((a, p) => a + p.x, 0) / Math.max(1, k.points.length),
@@ -553,6 +562,7 @@ export function WorldMap(props: Props) {
     }
   }, [
     props.world.territories,
+    props.kingdomLabels,
     presentation,
     props.labels,
     zoom,
@@ -708,7 +718,7 @@ export function WorldMap(props: Props) {
           },
         )
           .on("click", () => latest.current.onKingdom?.(t.id))
-          .bindTooltip(esc(t.name))
+          .bindTooltip(props.kingdomLabels === false ? "" : esc(t.name))
           .addTo(layer);
   }, [
     props.world.territories,
@@ -717,6 +727,7 @@ export function WorldMap(props: Props) {
     props.onKingdom,
     props.selectedKingdomId,
     props.kingdomSelection,
+    props.kingdomLabels,
   ]);
   useEffect(() => {
     const layer = layers.current.roads;
@@ -748,7 +759,7 @@ export function WorldMap(props: Props) {
       const size = appearance.size;
       const icon = L.divIcon({
         className: "location-marker",
-        html: `<span style="width:${size}px;height:${size}px;font-size:${size * 0.7}px" class="location-dot ${loc.kind}">${loc.kind === "city" ? "♜" : loc.kind === "landmark" ? "◇" : "⌂"}</span>${props.labels && (!playerView || appearance.label) ? `<span style="top:${size + 4}px" class="location-label">${esc(loc.name)}${props.population ? ` <small class="population-badge">${props.population[loc.id] ?? 0}</small>` : ""}</span>` : ""}`,
+        html: `<span style="width:${size}px;height:${size}px;font-size:${size * 0.7}px" class="location-dot ${loc.kind}">${loc.kind === "city" ? "♜" : loc.kind === "landmark" ? "◇" : "⌂"}</span>${props.labels && (!playerView || appearance.label) ? `<span style="top:${size + 4}px" class="location-label">${esc(loc.name)}</span>` : ""}`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
       });
@@ -772,6 +783,42 @@ export function WorldMap(props: Props) {
     props.tool,
     props.population,
     zoom,
+  ]);
+  useEffect(() => {
+    const layer = layers.current.population;
+    if (!layer) return;
+    layer.clearLayers();
+    if (props.editor) return;
+    for (const [id, count] of Object.entries(props.hexPopulation ?? {})) {
+      if (
+        !Number.isSafeInteger(count) ||
+        count < 1 ||
+        !/^-?\d+,-?\d+$/.test(id)
+      )
+        continue;
+      const [q, r] = id.split(",").map(Number),
+        h = { q, r };
+      L.marker(ll(center(h, props.world)), {
+        icon: L.divIcon({
+          className: "hex-population-marker",
+          html: `<span>${count}</span>`,
+          iconSize: [28, 24],
+          iconAnchor: [-12, -10],
+        }),
+        title: `${count} character${count === 1 ? "" : "s"} on hex ${id}`,
+        keyboard: true,
+        bubblingMouseEvents: false,
+        zIndexOffset: 1200,
+      })
+        .on("click", () => latest.current.onHexPeople?.(h))
+        .addTo(layer);
+    }
+  }, [
+    props.hexPopulation,
+    props.world.radius,
+    props.world.offsetX,
+    props.world.offsetY,
+    props.editor,
   ]);
   useEffect(() => {
     const layer = layers.current.character;

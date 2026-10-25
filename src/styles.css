@@ -4314,3 +4314,28 @@ input[type="range"] {
   align-items: center;
   font-size: 12px;
 }
+
+.hex-population-marker {
+  background: none;
+  border: 0;
+}
+.hex-population-marker > span {
+  min-width: 26px;
+  height: 24px;
+  padding: 3px 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #fff8e5;
+  border: 1px solid #776747;
+  box-shadow: 0 2px 6px #203f3b40;
+  color: #3d4d37;
+  font: 700 12px var(--sans);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.hex-population-marker:focus-visible > span,
+.hex-population-marker:hover > span {
+  background: #ead7a8;
+  outline: 2px solid #506447;
+}

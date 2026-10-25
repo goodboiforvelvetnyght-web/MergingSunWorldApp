@@ -111,6 +111,7 @@ export type Character = {
   currentLocationId?: string | null;
   internalLocationId?: string | null;
   incarnationId?: string;
+  hexKey?: string;
   realName?: string;
   portrait?: string;
   portraitPath?: string;
@@ -803,4 +804,20 @@ export function sailCharacter(
     currentLocationId: to.id,
     internalLocationId: null,
   };
+}
+
+/** Tile presence includes everyone, regardless of city/room presence or online status. */
+export function hexPopulationCounts(
+  characters: Character[],
+  w: World,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const c of characters) {
+    const id = key(hexAt(c, w));
+    counts[id] = (counts[id] ?? 0) + 1;
+  }
+  return counts;
+}
+export function sameCharacterHex(a: Point, b: Point, w: World): boolean {
+  return key(hexAt(a, w)) === key(hexAt(b, w));
 }

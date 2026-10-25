@@ -12,7 +12,7 @@ Travel, character approval and grid-origin resets place a character on a settlem
 
 **Back to map** changes only the display. **Return to city** reopens the city and the character's internal location. Neither action writes character state. **Leave city** clears city and room presence, preserves coordinates and energy, and returns to the map. Characters must leave before traveling. The same city cannot be entered again to accidentally reset a selected internal location.
 
-The backend handles city/room entry and exit in the existing `enterLocation` transaction. It checks character generation, physical hex, optional world version, and current city before changing presence. An approved active character is required. Direct room entry from outside is rejected. Character profiles and portraits remain visible to other players only while sharing a valid internal location. Population counts include characters who explicitly entered, including offline players; outside characters are excluded. Existing inside characters keep their city/room. Counts migrate automatically using `presenceVersion: 2`; no characters move during that migration. The travel model is versioned so older browser tabs must refresh before spending energy.
+The backend handles city/room entry and exit in the existing `enterLocation` transaction. It checks character generation, physical hex, optional world version, and current city before changing presence. An approved active character is required. Direct room entry from outside is rejected. Character profiles and portraits are visible to other players while sharing the same hex, including characters in different rooms or outside a city. City counts include characters who explicitly entered. Hex counts include everyone, including offline characters, and map badges appear only for occupied hexes. Existing characters keep their positions, energy and city/room. Counts and the private character hex index migrate automatically using `presenceVersion: 3`. The travel model is versioned so older browser tabs must refresh before spending energy.
 
 ## Editor artwork opacity
 
@@ -23,3 +23,25 @@ The **Artwork** slider in the editor ribbon fades only the base map imagery (0â€
 Developers can explicitly open `/?preview=1` for the existing isolated local preview. It is labeled LOCAL PREVIEW and keeps edits in browser storage; it grants no Firebase roles or permission to change the shared world. Atlas/editor regression tests explicitly select this mode. Title-screen tests use fresh storage, and Auth-emulator checks exercise the title-to-sign-in-to-guide path.
 
 Before inviting friends, an admin must mark at least one walkable city as a starting settlement. If no starting settlements exist, players can read lore and the creation flow explains that the world is waiting for a starting city. Do not replace the live world with placeholder content to create one.
+
+### Occupied hexes and public profiles
+
+The public population document retains `counts` for explicit city occupancy and
+adds `hexCounts` for all active approved characters, including offline characters.
+Map badges show only positive hex totals, once per hex. City entry and room changes
+do not affect hex totals. Walking, sailing, approval/recreation and published grid
+or map-alignment changes update both aggregates atomically. Migration adds a private
+`hexKey` index to character records without moving them or spending energy.
+
+Click a hex badge while your character is there to open **Characters here**.
+Profiles include public names, titles, backstories, origins and portraits; real
+names, energy, application data and rejection reasons are never returned. Lists
+refresh every 30 seconds and can be refreshed manually. Leaving the hex closes the
+panel. The server validates current world, generation and physical hex for list
+requests and independently checks portrait access. The legacy `getRoomCharacters`
+callable remains an alias for same-hex browsing. Character documents and Storage
+portraits retain their existing direct-read restrictions.
+
+During birth-city selection, kingdom emblems and labels are hidden. The map fits
+the selected kingdom's walkable starting cities (or its settlements if no starting
+city is available), within the configured zoom limits. Selecting a city focuses it.

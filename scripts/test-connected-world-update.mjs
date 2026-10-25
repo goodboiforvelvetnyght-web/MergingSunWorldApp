@@ -211,12 +211,38 @@ export async function testConnectedWorldUpdate({
   await guest
     .getByRole("button", { name: "Close dialog", exact: true })
     .click();
+  await expect(
+    guest.locator(".hex-population-marker").filter({ hasText: "2" }),
+  ).toHaveCount(1);
+  await guest
+    .locator(".hex-population-marker")
+    .filter({ hasText: "2" })
+    .click();
+  await guest
+    .getByRole("dialog")
+    .getByRole("button", {
+      name: "Resident of the Commons Keeper",
+      exact: true,
+    })
+    .click();
+  await expect(guest.getByRole("dialog")).toContainText(
+    "A public resident history.",
+  );
+  await expect(guest.getByRole("dialog")).not.toContainText(
+    "Hidden Resident Real Name",
+  );
+  await guest
+    .getByRole("button", { name: "Close dialog", exact: true })
+    .click();
   await guest.getByLabel("Search locations", { exact: true }).fill("Emberfall");
   await guest.locator(".place-item").click();
   await expect(
-    guest.getByText("1 characters here · includes offline players", {
-      exact: true,
-    }),
+    guest.getByText(
+      "1 characters inside this city · includes offline players",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   const beforeEntry = (await db.doc(`characters/${invited.uid}`).get()).data();
   assert.equal(beforeEntry.currentLocationId, null);
@@ -244,7 +270,19 @@ export async function testConnectedWorldUpdate({
   await city
     .getByRole("button", { name: "Enter The Copper Stag", exact: true })
     .click();
-  await expect(city).toContainText("No other characters here.");
+  await expect(
+    city.getByRole("button", {
+      name: "Resident of the Commons Keeper",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await db.doc(`characters/${invited.uid}`).get()).data()
+          .internalLocationId,
+    )
+    .toBe("copper-stag");
   const inRoom = (await db.doc(`characters/${invited.uid}`).get()).data();
   assert.equal(inRoom.internalLocationId, "copper-stag");
   await city.getByRole("button", { name: "Back to map", exact: true }).click();
@@ -268,6 +306,13 @@ export async function testConnectedWorldUpdate({
       exact: true,
     }),
   ).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await db.doc(`characters/${invited.uid}`).get()).data()
+          .internalLocationId,
+    )
+    .toBe(commonsId("emberfall"));
   await city.getByRole("button", { name: "Leave city", exact: true }).click();
   await expect(city).toHaveCount(0);
   const afterLeave = (await db.doc(`characters/${invited.uid}`).get()).data();
@@ -280,6 +325,6 @@ export async function testConnectedWorldUpdate({
     "PASS draft map upload, published tiles and manually positioned kingdom emblem",
   );
   console.log(
-    "PASS live population, private room profiles, explicit city entry, map navigation and leaving on desktop and mobile",
+    "PASS live hex population, same-hex profiles, explicit city entry, map navigation and leaving on desktop and mobile",
   );
 }

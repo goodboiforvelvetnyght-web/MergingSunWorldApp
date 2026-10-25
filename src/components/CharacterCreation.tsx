@@ -201,8 +201,17 @@ export default function CharacterCreation({
     setEntryId(null);
   }, [step]);
   useEffect(() => {
-    if (home && step === 2) map.current?.focus(home);
-  }, [home?.id, step]);
+    if (step !== 2) return;
+    if (home) map.current?.focus(home);
+    else {
+      const available = cities.filter(
+        (l) =>
+          l.starting &&
+          Number.isFinite(entryCost(tileAt(hexAt(l, world), world), world)),
+      );
+      map.current?.focusBounds(available.length ? available : cities);
+    }
+  }, [home?.id, step, kingdom?.id, world.version]);
   const ready =
     step === 0
       ? !!draft.name.trim()
@@ -339,8 +348,23 @@ export default function CharacterCreation({
                   onBorder={noop}
                   onReady={(handle) => {
                     map.current = handle;
-                    if (home && step === 2) handle.focus(home);
+                    if (step === 2) {
+                      if (home) handle.focus(home);
+                      else {
+                        const available = cities.filter(
+                          (l) =>
+                            l.starting &&
+                            Number.isFinite(
+                              entryCost(tileAt(hexAt(l, world), world), world),
+                            ),
+                        );
+                        handle.focusBounds(
+                          available.length ? available : cities,
+                        );
+                      }
+                    }
                   }}
+                  kingdomLabels={step !== 2}
                   kingdomSelection
                   selectedKingdomId={kingdom?.id}
                   onKingdom={

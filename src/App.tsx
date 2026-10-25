@@ -1,3 +1,4 @@
+import { HexCharacters } from "./components/HexCharacters";
 import { SettlementCover } from "./components/SettlementCover";
 import { KingdomBrowser } from "./components/KingdomBrowser";
 import { MapPresentationEditor } from "./components/MapPresentation";
@@ -208,6 +209,11 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false),
     [characterOpen, setCharacterOpen] = useState(false),
     [aboutOpen, setAboutOpen] = useState(false);
+  const [hexPeople, setHexPeople] = useState<string | null>(null);
+  useEffect(
+    () => setHexPeople(null),
+    [character?.x, character?.y, character?.incarnationId, published.version],
+  );
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     new URLSearchParams(window.location.hash.slice(1)).get("location"),
   );
@@ -2236,6 +2242,23 @@ export default function App() {
             presentationPreview={editor && editorCategory === "presentation"}
             artworkOpacity={editor ? artworkOpacity : 1}
             population={isDemo ? undefined : cloud.population}
+            hexPopulation={
+              isDemo
+                ? character
+                  ? { [key(hexAt(character, world))]: 1 }
+                  : {}
+                : cloud.hexPopulation
+            }
+            onHexPeople={(h) => {
+              const id = key(h);
+              if (!character || key(hexAt(character, published)) !== id) {
+                notice(
+                  "Move your character onto this hex to read its character profiles.",
+                );
+                return;
+              }
+              setHexPeople(id);
+            }}
             onKingdom={editor ? undefined : setViewKingdom}
             selectedKingdomId={
               editor
@@ -2566,7 +2589,7 @@ export default function App() {
                     <p className="fine-print">
                       {isDemo
                         ? "Demo world"
-                        : `${cloud.population[location.id] ?? 0} characters here · includes offline players`}
+                        : `${cloud.population[location.id] ?? 0} characters inside this city · includes offline players`}
                     </p>
                     {!!internalLocations(location).length && (
                       <section className="internal-entries">
@@ -2874,6 +2897,22 @@ export default function App() {
           </div>
         </Modal>
       )}
+      {hexPeople &&
+        character &&
+        key(hexAt(character, published)) === hexPeople && (
+          <Modal
+            title="Characters here"
+            subtitle={`Hex ${hexPeople} · includes offline characters`}
+            onClose={() => setHexPeople(null)}
+          >
+            <HexCharacters
+              world={published}
+              character={character}
+              hexKey={hexPeople}
+              demo={isDemo}
+            />
+          </Modal>
+        )}
       {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
       {editLocation && draft && (
         <Suspense
