@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { call, friendlyError } from "../useWorld";
 import type { World, Character } from "../../shared/world";
@@ -37,8 +37,12 @@ export function Events({
   demo,
   onLocation,
   initialEventId,
+  publicPage = false,
+  onSignIn,
 }: {
   initialEventId?: string | null;
+  publicPage?: boolean;
+  onSignIn?: () => void;
   admin: boolean;
   uid?: string;
   character: Character | null;
@@ -46,6 +50,11 @@ export function Events({
   demo: boolean;
   onLocation: (id: string) => void;
 }) {
+  const [managing, setManaging] = useState(false);
+  const [choosingLink, setChoosingLink] = useState(false);
+  const [search, setSearch] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [events, setEvents] = useState<WorldEvent[]>([]),
     [selected, select] = useState<string | null>(initialEventId ?? null),
     [draft, edit] = useState<WorldEvent | null>(null),
@@ -60,20 +69,53 @@ export function Events({
     [directUid, setDirectUid] = useState("");
   const event = events.find((e) => e.id === selected);
   useEffect(() => {
-    if (demo) return;
+    if (demo) {
+      setLoaded(true);
+      return;
+    }
+    setLoaded(false);
+    if (publicPage && initialEventId)
+      return onSnapshot(
+        doc(db, "events", initialEventId),
+        (snapshot) => {
+          setEvents(snapshot.exists() ? [snapshot.data() as WorldEvent] : []);
+          setLoaded(true);
+        },
+        () => {
+          setEvents([]);
+          setLoaded(true);
+        },
+      );
     return onSnapshot(
       admin
         ? collection(db, "events")
         : query(collection(db, "events"), where("published", "==", true)),
-      (s) =>
+      (s) => {
+        setLoaded(true);
         setEvents(
           s.docs
             .map((d) => d.data() as WorldEvent)
             .sort((a, b) => b.date.localeCompare(a.date)),
-        ),
-      (e) => setError(friendlyError(e)),
+        );
+      },
+      (e) => {
+        setError(friendlyError(e));
+        setLoaded(true);
+      },
     );
-  }, [admin, demo]);
+  }, [admin, demo, publicPage, initialEventId]);
+  useEffect(() => {
+    setManaging(false);
+    setChoosingLink(false);
+    setProfile(null);
+    setCopied(false);
+  }, [selected]);
+  useEffect(() => {
+    if (!event) {
+      setProfile(null);
+      setLinking(null);
+    }
+  }, [!!event]);
   async function refreshLinks() {
     if (selected && uid && !demo) {
       const r = await call<{ links: EventLink[] }>("getEventLinks", {
@@ -124,15 +166,7 @@ export function Events({
         <p>
           {p.playerIdentity} · {p.characterClass}
         </p>
-        {!p.linked && character && uid && (
-          <button
-            disabled={busy || !!link || links.some((l) => l.uid === uid)}
-            onClick={() => setLinking(p)}
-          >
-            {link?.status === "pending" ? "Link pending" : "Link my character"}
-          </button>
-        )}
-        {admin && (
+        {admin && managing && (
           <div className="event-actions">
             <button
               onClick={() => {
@@ -169,13 +203,45 @@ export function Events({
     );
   }
   return (
-    <div className="events-workspace">
+    <div
+      className={`events-workspace ${event?.kind === "major" ? "event-cinematic" : ""} ${publicPage ? "event-public" : ""}`}
+    >
+      {publicPage && (
+        <nav className="event-public-nav">
+          <a href="/">☼ Merging Sun</a>
+          <span>A world worth belonging to</span>
+        </nav>
+      )}
       <header className="event-heading">
         <span className="eyebrow">THE CHRONICLES OF MERGING SUN</span>
         <h1>{event?.title ?? "Events"}</h1>
         <div className="event-actions">
-          {event && <button onClick={() => select(null)}>All events</button>}
-          {admin && (
+          {event && !publicPage && (
+            <button onClick={() => select(null)}>All events</button>
+          )}
+          {event && admin && (
+            <button
+              aria-pressed={managing}
+              onClick={() => setManaging(!managing)}
+            >
+              {managing ? "Done managing" : "Manage event"}
+            </button>
+          )}
+          {event?.published && admin && (
+            <button
+              onClick={() =>
+                void run(async () => {
+                  await navigator.clipboard.writeText(
+                    `${window.location.origin}/events/${event.id}`,
+                  );
+                  setCopied(true);
+                })
+              }
+            >
+              {copied ? "Link copied" : "Copy event link"}
+            </button>
+          )}
+          {admin && (!event || managing) && (
             <button
               onClick={() => edit(event ? structuredClone(event) : blank())}
             >
@@ -190,7 +256,15 @@ export function Events({
         </p>
       )}
       {demo && <p>Events are published by admins in the connected app.</p>}
-      {!event ? (
+      {!loaded ? (
+        <p role="status">Opening the chronicles…</p>
+      ) : !event && publicPage ? (
+        <section className="event-unavailable">
+          <h2>Event unavailable</h2>
+          <p>This event may not be published, or the link may be incorrect.</p>
+          <a href="/">Return to Merging Sun</a>
+        </section>
+      ) : !event ? (
         <>
           <label>
             Event type{" "}
@@ -215,7 +289,8 @@ export function Events({
                   </span>
                   <h2>{e.title}</h2>
                   <p>
-                    {e.date} · {e.venue}
+                    {e.date}
+                    {e.venue && ` · ${e.venue}`}
                   </p>
                 </button>
               ))}
@@ -225,7 +300,8 @@ export function Events({
       ) : (
         <>
           <p className="event-meta">
-            {event.date} · {event.venue}
+            {event.date}
+            {event.venue && ` · ${event.venue}`}
             {!event.published && " · Draft"}
           </p>
           <p className="event-story">{event.story}</p>
@@ -236,7 +312,7 @@ export function Events({
           )}
           {event.kind === "major" && (
             <>
-              {admin && (
+              {admin && managing && (
                 <button
                   onClick={() => {
                     editParticipant({
@@ -253,6 +329,23 @@ export function Events({
                   Add participant
                 </button>
               )}
+              <div className="event-link-action">
+                <button
+                  disabled={links.some((l) => l.uid === uid)}
+                  onClick={() => {
+                    setChoosingLink(true);
+                    setSearch("");
+                  }}
+                >
+                  {links.some((l) => l.uid === uid && l.status === "pending")
+                    ? "Link pending"
+                    : links.some(
+                          (l) => l.uid === uid && l.status === "approved",
+                        )
+                      ? "Character linked"
+                      : "Link my character"}
+                </button>
+              </div>
               <div className="event-sides">
                 {event.sides.map((side, index) => (
                   <section
@@ -261,31 +354,38 @@ export function Events({
                     style={
                       side.artwork
                         ? {
-                            backgroundImage: `linear-gradient(#15282099,#152820e8),url("${coverUrl(side.artwork)}")`,
+                            backgroundImage: `linear-gradient(180deg,#0a19152b,#0a191588 65%,#0a1915cc),url("${coverUrl(side.artwork)}")`,
                           }
                         : undefined
                     }
                   >
-                    <header>
-                      {side.logo && (
-                        <img
-                          className="event-side-logo"
-                          src={emblemUrl(side.logo)}
-                          alt={`${side.name} logo`}
-                        />
+                    <div className="event-roster-panel">
+                      <header>
+                        {side.logo && (
+                          <img
+                            className="event-side-logo"
+                            src={emblemUrl(side.logo)}
+                            alt={`${side.name} logo`}
+                          />
+                        )}
+                        <h2>{side.name}</h2>
+                        <p>
+                          {
+                            event.participants.filter((p) => p.side === index)
+                              .length
+                          }{" "}
+                          participants
+                        </p>
+                      </header>
+                      {event.participants
+                        .filter((p) => p.side === index)
+                        .map(participantCard)}
+                      {!event.participants.some((p) => p.side === index) && (
+                        <p className="event-roster-empty">
+                          The names of this company are yet to be announced.
+                        </p>
                       )}
-                      <h2>{side.name}</h2>
-                      <p>
-                        {
-                          event.participants.filter((p) => p.side === index)
-                            .length
-                        }{" "}
-                        participants
-                      </p>
-                    </header>
-                    {event.participants
-                      .filter((p) => p.side === index)
-                      .map(participantCard)}
+                    </div>
                   </section>
                 ))}
               </div>
@@ -579,6 +679,81 @@ export function Events({
             )}
             {error && <p role="alert">{error}</p>}
           </form>
+        </Modal>
+      )}
+      {choosingLink && event && (
+        <Modal
+          title="Find your registration"
+          onClose={() => setChoosingLink(false)}
+        >
+          {!uid ? (
+            <>
+              <p>
+                Everyone can explore this event. Sign in to link your character
+                to your registration.
+              </p>
+              <button
+                onClick={() => {
+                  setChoosingLink(false);
+                  onSignIn?.();
+                }}
+              >
+                Sign in to link
+              </button>
+            </>
+          ) : !character ? (
+            <>
+              <p>You need an approved character before requesting a link.</p>
+              <a href="/">Open Merging Sun to create your character</a>
+            </>
+          ) : (
+            <>
+              <p>
+                Select the entry you registered under. Admin will confirm the
+                match.
+              </p>
+              <label>
+                Search registrations
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Character name or player identity"
+                />
+              </label>
+              <div className="event-registration-options">
+                {event.participants
+                  .filter(
+                    (p) =>
+                      !p.linked &&
+                      `${p.characterName} ${p.playerIdentity}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+                  )
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        setChoosingLink(false);
+                        setLinking(p);
+                      }}
+                    >
+                      <strong>{p.characterName}</strong>
+                      <span>
+                        {p.playerIdentity} · {p.characterClass} ·{" "}
+                        {event.sides[p.side].name}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+              {!event.participants.some(
+                (p) =>
+                  !p.linked &&
+                  `${p.characterName} ${p.playerIdentity}`
+                    .toLowerCase()
+                    .includes(search.toLowerCase()),
+              ) && <p>No matching unlinked registration.</p>}
+            </>
+          )}
         </Modal>
       )}
       {linking && character && (

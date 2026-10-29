@@ -4507,3 +4507,278 @@ input[type="range"] {
 .events-workspace .event-participant p {
   margin: 10px 0;
 }
+
+/* Public event presentation: art, quiet controls, and one frosted roster per side. */
+.event-public {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  padding: 0 0 60px;
+  min-height: 100dvh;
+}
+.event-public-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px clamp(20px, 5vw, 80px);
+  gap: 24px;
+}
+.event-public-nav a {
+  text-decoration: none;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 14px;
+  color: inherit;
+}
+.event-public-nav span {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+.event-public .event-heading {
+  padding: 30px 24px 10px;
+}
+.event-public .event-meta,
+.event-public .event-story {
+  padding-inline: 24px;
+}
+.event-unavailable {
+  text-align: center;
+  padding: 50px 20px;
+}
+.event-cinematic {
+  background: #10251f;
+  color: #eee9dd;
+  padding: 0 0 48px;
+}
+.event-cinematic .event-heading {
+  padding: clamp(28px, 5vw, 72px) 24px 0;
+  margin-bottom: 16px;
+}
+.event-cinematic .event-heading h1 {
+  font-size: clamp(44px, 6vw, 90px);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+}
+.event-cinematic .eyebrow {
+  color: #c6aa70;
+}
+.event-cinematic .event-meta {
+  color: #c3bea9;
+  font-size: 12px;
+  letter-spacing: 0.07em;
+  padding: 0 24px;
+}
+.event-cinematic > .event-story {
+  max-width: 760px;
+  color: #d7d9cc;
+  font-size: 15px;
+  text-align: center;
+  padding: 0 24px;
+  margin: 24px auto 36px;
+}
+.event-cinematic .event-sides {
+  gap: 0;
+  margin-top: 28px;
+  align-items: stretch;
+}
+.event-cinematic .event-side {
+  min-height: 80vh;
+  padding: clamp(32px, 6vw, 100px) clamp(18px, 3vw, 56px);
+  background-size: cover;
+  background-position: center top;
+  background-color: #23382e;
+}
+.event-cinematic .event-side:nth-child(2) {
+  background-color: #30362e;
+}
+.event-roster-panel {
+  max-width: 640px;
+  margin: auto;
+  padding: clamp(20px, 3vw, 44px);
+  border: 1px solid #c8ac718c;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #172d26b8, #15271fc9);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow:
+    inset 0 0 0 1px #fff1,
+    0 20px 65px #0003;
+}
+.event-roster-panel > header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+.event-cinematic .event-side-logo {
+  width: clamp(130px, 15vw, 210px);
+  height: 170px;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 18px #0005);
+}
+.event-roster-panel h2 {
+  font-size: clamp(32px, 3vw, 48px);
+  font-weight: 400;
+  margin: 18px 0 8px;
+}
+.event-roster-panel > header p {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: #cfbd95;
+}
+.event-cinematic .event-participant {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid #c7b48038;
+  margin: 0;
+  padding: 22px 0;
+}
+.event-cinematic .event-participant h3 {
+  font-size: 23px;
+  font-weight: 400;
+}
+.event-cinematic .event-participant p {
+  font-size: 12px;
+  color: #c2c9b9;
+  margin-top: 7px;
+}
+.event-cinematic .event-linked button {
+  font-family: inherit;
+  font-weight: 400;
+  font-size: 23px;
+  text-decoration: none;
+}
+.event-cinematic .event-linked button:hover {
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.event-cinematic .event-linked .portrait {
+  border: 1px solid #cbb57f;
+  width: 52px;
+  height: 52px;
+}
+.event-roster-empty {
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  color: #c8cbbd;
+  line-height: 1.7;
+}
+.event-link-action {
+  text-align: center;
+  margin: 24px 0;
+}
+.event-cinematic button:not(.icon-button) {
+  background: transparent;
+  color: #d9c594;
+  border-color: #bea56770;
+  font-size: 12px;
+  padding: 9px 16px;
+}
+.event-cinematic button:hover:not(:disabled) {
+  background: #cbb57f18;
+  color: #fff;
+}
+.event-cinematic .event-actions {
+  gap: 8px;
+}
+.event-cinematic .event-actions button {
+  font-size: 11px;
+}
+.event-cinematic > section {
+  padding: 36px 24px;
+  max-width: 850px;
+  margin: auto;
+}
+.event-cinematic .modal {
+  color: #283f32;
+}
+.event-cinematic .modal button:not(.icon-button) {
+  color: #385441;
+  border-color: #a6ad96;
+  background: #f5f2e8;
+  font-size: 14px;
+}
+.event-cinematic .modal button:hover:not(:disabled) {
+  background: #e5e8d8;
+  color: #233d2c;
+}
+.event-registration-options {
+  display: grid;
+  gap: 8px;
+  max-height: 45vh;
+  overflow: auto;
+  margin-top: 20px;
+}
+.event-registration-options button {
+  text-align: left;
+  display: grid;
+  gap: 6px;
+}
+.event-registration-options span {
+  font-size: 12px;
+  opacity: 0.8;
+}
+.event-cinematic .error {
+  margin: 16px 24px;
+}
+.event-public .event-list {
+  padding: 24px;
+}
+.event-cinematic :focus-visible {
+  outline: 2px solid #d3b674;
+  outline-offset: 4px;
+}
+@media (max-width: 700px) {
+  .event-public-nav {
+    padding: 22px 20px;
+  }
+  .event-public-nav span {
+    display: none;
+  }
+  .event-cinematic .event-heading {
+    padding-top: 32px;
+  }
+  .event-cinematic .event-side {
+    min-height: 65vh;
+    padding: 40px 20px;
+  }
+  .event-cinematic .event-sides {
+    grid-template-columns: 1fr;
+  }
+  .event-roster-panel {
+    padding: 24px;
+  }
+  .event-cinematic .event-participant h3,
+  .event-cinematic .event-linked button {
+    font-size: 21px;
+  }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  .event-roster-panel {
+    background: #193027ed;
+  }
+}
+.event-cinematic .event-linked button:not(.icon-button) {
+  font-size: 23px;
+  padding: 0;
+  color: #eee9dd;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.event-cinematic .event-linked button:not(.icon-button):hover {
+  color: #e2c684;
+  background: none;
+}
+.event-cinematic .event-participant:has(.event-linked .portrait) > p {
+  padding-left: 68px;
+}
+@media (max-width: 700px) {
+  .event-cinematic .event-linked button:not(.icon-button) {
+    font-size: 21px;
+  }
+}

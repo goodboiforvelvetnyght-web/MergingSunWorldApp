@@ -11,3 +11,9 @@ An approved character owner can request a link from an unlinked entry after agre
 The registration fields remain unchanged when linked. The character's name, title, biography and portrait reference are copied on approval. Event readers can access this snapshot regardless of hex; private real names, energy, applications and account details are never included. Portrait files remain private in Storage and are delivered through a callable that checks the event is published and the link is still approved. Later character edits do not change the snapshot. Unlink/relink to replace it.
 
 The first version allows 500 participants per event. Portraits load as entries approach the viewport. Existing world draft publication is independent of event publication.
+
+## Public links and presentation
+
+Every published event has a stable `/events/<event-id>` link. Admins use **Copy event link** to share it. The link opens a full-browser event page, including story, rosters and approved character snapshots, without requiring an account or passing through the title screen. Draft, unpublished and missing events show an unavailable page to visitors. Signing in is prompted only when requesting a character link.
+
+Major events present each side's artwork behind a single frosted roster panel with a thin gold border and prominent logo. The rosters are side by side on desktop and stacked on mobile. A single **Link my character** action opens a searchable registration picker. Admins switch on **Manage event** to reveal editing and request-review actions; ordinary browsing keeps these controls hidden.

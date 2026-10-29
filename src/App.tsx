@@ -1118,6 +1118,28 @@ export default function App() {
         <p>Opening Merging Sun…</p>
       </main>
     );
+  const publicEventMatch = window.location.pathname.match(
+    /^\/events\/([\w-]+)\/?$/,
+  );
+  if (publicEventMatch)
+    return (
+      <>
+        <Events
+          publicPage
+          initialEventId={publicEventMatch[1]}
+          admin={cloud.admin}
+          uid={cloud.user?.uid}
+          character={cloud.character}
+          world={cloud.world}
+          demo={false}
+          onSignIn={() => setAuthOpen(true)}
+          onLocation={(id) =>
+            window.location.assign(`/#location=${encodeURIComponent(id)}`)
+          }
+        />
+        {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
+      </>
+    );
   if (window.location.pathname.replace(/\/$/, "") === "/admin/activate")
     return (
       <>
@@ -2210,6 +2232,7 @@ export default function App() {
         >
           {tab === "events" && (
             <Events
+              onSignIn={() => setAuthOpen(true)}
               initialEventId={eventId}
               admin={cloud.admin}
               uid={cloud.user?.uid}
