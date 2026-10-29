@@ -5,12 +5,14 @@ import { call, friendlyError } from "../useWorld";
 import { emblemUrl, mapPreviewUrl } from "../../shared/assets";
 export function WorldAssetUpload({
   kind,
+  label,
   value,
   onChange,
   onBusyChange,
   demo = false,
 }: {
   kind: "map" | "emblem" | "cover";
+  label?: string;
   value?: string | null;
   onChange: (
     id: string | null,
@@ -40,11 +42,12 @@ export function WorldAssetUpload({
   return (
     <div className="asset-upload form-stack">
       <h3>
-        {kind === "map"
-          ? "Map artwork"
-          : cover
-            ? "Settlement cover"
-            : "Coat of arms or flag"}
+        {label ??
+          (kind === "map"
+            ? "Map artwork"
+            : cover
+              ? "Settlement cover"
+              : "Coat of arms or flag")}
       </h3>
       {value && !cover && (
         <img
@@ -56,11 +59,13 @@ export function WorldAssetUpload({
         />
       )}
       <label>
-        {kind === "map"
-          ? "Upload map artwork"
-          : cover
-            ? "Upload settlement cover"
-            : "Upload coat of arms or flag"}
+        {label
+          ? `Upload ${label.toLowerCase()}`
+          : kind === "map"
+            ? "Upload map artwork"
+            : cover
+              ? "Upload settlement cover"
+              : "Upload coat of arms or flag"}
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp"

@@ -1,3 +1,4 @@
+import { Events } from "./components/Events";
 import { HexCharacters } from "./components/HexCharacters";
 import { SettlementCover } from "./components/SettlementCover";
 import { KingdomBrowser } from "./components/KingdomBrowser";
@@ -202,9 +203,10 @@ export default function App() {
   const published = isDemo ? localWorld : cloud.world,
     character = isDemo ? demoCharacter : cloud.character,
     journeys = isDemo ? demoJourneys : cloud.journeys;
-  const [tab, setTab] = useState<"atlas" | "journal" | "character" | "editor">(
-      "atlas",
-    ),
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [tab, setTab] = useState<
+      "atlas" | "journal" | "character" | "editor" | "events"
+    >("atlas"),
     [mobileOpen, setMobileOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false),
     [characterOpen, setCharacterOpen] = useState(false),
@@ -1174,7 +1176,7 @@ export default function App() {
     );
   return (
     <div
-      className={`app-shell ${editor ? `editor-workspace ${editorCategory === "rules" ? "rules-workspace" : ""}` : cityView ? "city-workspace" : ""}`}
+      className={`app-shell ${tab === "events" ? "events-page" : ""} ${editor ? `editor-workspace ${editorCategory === "rules" ? "rules-workspace" : ""}` : cityView ? "city-workspace" : ""}`}
     >
       <nav className="rail" aria-label="Main navigation">
         <a
@@ -1193,6 +1195,7 @@ export default function App() {
             [
               { id: "atlas", label: "World atlas", icon: MapIcon },
               { id: "journal", label: "Lore library", icon: BookOpen },
+              { id: "events", label: "Events", icon: BookOpen },
               { id: "character", label: "My character", icon: UserRound },
             ] as const
           ).map((n) => (
@@ -1201,7 +1204,10 @@ export default function App() {
               title={n.label}
               aria-label={n.label}
               className={`rail-item ${tab === n.id ? "active" : ""}`}
-              onClick={() => navigate(n.id)}
+              onClick={() => {
+                setEventId(null);
+                navigate(n.id);
+              }}
             >
               <n.icon size={21} />
               <span>
@@ -1209,7 +1215,9 @@ export default function App() {
                   ? "Atlas"
                   : n.id === "journal"
                     ? "Lore"
-                    : "Character"}
+                    : n.id === "events"
+                      ? "Events"
+                      : "Character"}
               </span>
             </button>
           ))}
@@ -2150,14 +2158,16 @@ export default function App() {
               <Menu size={21} />
             </button>
             <Globe2 size={18} />
-            <span>The World Atlas</span>
+            <span>{tab === "events" ? "Events" : "The World Atlas"}</span>
             <ChevronRight size={13} />
             <small>
               {editor
                 ? "World editor"
                 : cityView
                   ? cityView.name
-                  : "The known world"}
+                  : tab === "events"
+                    ? "The chronicles"
+                    : "The known world"}
             </small>
           </div>
           <div className="topbar-actions">
@@ -2198,6 +2208,21 @@ export default function App() {
               : "World atlas"
           }
         >
+          {tab === "events" && (
+            <Events
+              initialEventId={eventId}
+              admin={cloud.admin}
+              uid={cloud.user?.uid}
+              character={character}
+              world={published}
+              demo={isDemo}
+              onLocation={(id) => {
+                navigate("atlas");
+                const l = published.locations.find((l) => l.id === id);
+                if (l) mapRef.current?.focus(l);
+              }}
+            />
+          )}
           {cityView && (
             <CityView
               location={cityView}
@@ -2238,6 +2263,14 @@ export default function App() {
             />
           )}
           <WorldMap
+            onEvent={
+              isDemo
+                ? undefined
+                : (id) => {
+                    setEventId(id);
+                    navigate("events");
+                  }
+            }
             world={world}
             presentationPreview={editor && editorCategory === "presentation"}
             artworkOpacity={editor ? artworkOpacity : 1}

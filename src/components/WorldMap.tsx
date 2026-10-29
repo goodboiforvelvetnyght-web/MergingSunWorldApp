@@ -1,3 +1,6 @@
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../firebase";
+import type { WorldEvent } from "../../shared/events";
 import {
   DEFAULT_MAP_PRESENTATION,
   mapPresentationError,
@@ -96,6 +99,7 @@ type Props = {
   canRedo?: boolean;
   onSelect: (h: Hex) => void;
   onLocation: (id: string) => void;
+  onEvent?: (id: string) => void;
   onPaint: (h: Hex) => void;
   onStroke: () => void;
   onPlace: (p: Point) => void;
@@ -146,6 +150,42 @@ export function WorldMap(props: Props) {
   }, [context]);
   const draggingPoint = useRef<number | null>(null);
   latest.current = props;
+  useEffect(() => {
+    if (!props.onEvent || props.editor) return;
+    let group: L.LayerGroup | undefined;
+    const stop = onSnapshot(
+      query(collection(db, "events"), where("published", "==", true)),
+      (snapshot) => {
+        group?.remove();
+        if (!map.current) return;
+        group = L.layerGroup().addTo(map.current);
+        for (const doc of snapshot.docs) {
+          const e = doc.data() as WorldEvent;
+          const location = props.world.locations.find(
+            (l) => l.id === e.locationId,
+          );
+          if (!location) continue;
+          L.marker(ll(location), {
+            icon: L.divIcon({
+              className: "event-map-marker",
+              html: "⚑",
+              iconSize: [28, 28],
+              iconAnchor: [-12, 40],
+            }),
+            title: e.title,
+            zIndexOffset: 1400,
+          })
+            .bindTooltip(esc(e.title))
+            .on("click", () => latest.current.onEvent?.(e.id))
+            .addTo(group);
+        }
+      },
+    );
+    return () => {
+      stop();
+      group?.remove();
+    };
+  }, [!!props.onEvent, props.editor, props.world.locations]);
   const settings = props.world.mapPresentation ?? DEFAULT_MAP_PRESENTATION;
   // Keep preview usable while numeric fields are temporarily incomplete.
   const presentation = mapPresentationError(settings)

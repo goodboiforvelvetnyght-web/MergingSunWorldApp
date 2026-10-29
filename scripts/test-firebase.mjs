@@ -908,6 +908,8 @@ try {
   });
   const { testLargeMaps } = await import("./test-large-maps.mjs");
   await testLargeMaps({ check, admin, player, other, db });
+  const { testEvents } = await import("./test-events.mjs");
+  await testEvents({ check, admin, player, other, db });
   console.log(`Firebase integration: ${passed} checks passed.`);
   process.exit(0);
 } catch (e) {

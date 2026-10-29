@@ -8,6 +8,7 @@ service cloud.firestore {
          get(/databases/$(database)/documents/adminRoles/$(request.auth.uid)).data.role == 'admin'));
     }
     function ownerOrAdmin(uid) { return signedIn() && (request.auth.uid == uid || admin()); }
+    match /events/{event} { allow read: if resource.data.published == true || admin(); allow write: if false; }
     match /worlds/main { allow read: if true; allow write: if false; }
     // Character records include real names and portraits: only the owner and admins may read them.
     match /characters/{uid} {
