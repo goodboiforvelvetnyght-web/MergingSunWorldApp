@@ -9,6 +9,11 @@ service cloud.firestore {
     }
     function ownerOrAdmin(uid) { return signedIn() && (request.auth.uid == uid || admin()); }
     match /events/{event} { allow read: if resource.data.published == true || admin(); allow write: if false; }
+    match /registrationDrafts/{event} { allow read: if admin(); allow write: if false; }
+    match /registrationSheets/{event} { allow read: if admin(); allow write: if false; }
+    match /events/{event}/registration/{config} { allow read: if admin() || get(/databases/$(database)/documents/events/$(event)).data.published == true; allow write: if false; }
+    match /events/{event}/registrations/{registration} { allow read: if admin(); allow write: if false; }
+    match /events/{event}/registrationVersions/{version} { allow read: if admin(); allow write: if false; }
     match /worlds/main { allow read: if true; allow write: if false; }
     // Character records include real names and portraits: only the owner and admins may read them.
     match /characters/{uid} {

@@ -65,12 +65,16 @@ export const manageEvent = onCall(options, async (request) => {
           "aborted",
           "This event changed. Reload before saving.",
         );
-      if (old?.participants.length && clean.kind !== old.kind)
+      if (
+        (old?.participants.length || old?.registrationOpen !== undefined) &&
+        clean.kind !== old?.kind
+      )
         throw new HttpsError(
           "failed-precondition",
-          "Remove participants before changing event type.",
+          "Events with participants or registration settings must retain their event type.",
         );
       tx.set(ref, {
+        ...old,
         ...clean,
         id: eventId,
         participants: old?.participants ?? [],

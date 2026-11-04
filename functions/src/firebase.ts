@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase-admin/app";
+import { initializeApp, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-initializeApp();
+if (!getApps().length) initializeApp();
 export const db = getFirestore();

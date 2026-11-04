@@ -30,7 +30,9 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "survey-core": "^3.2.4",
+    "survey-react-ui": "^3.2.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

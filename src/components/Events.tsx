@@ -1,3 +1,16 @@
+import { lazy, Suspense } from "react";
+import {
+  defaultRegistration,
+  type RegistrationConfig,
+} from "../../shared/registration";
+const RegistrationAdmin = lazy(() =>
+  import("./RegistrationAdmin").then((m) => ({ default: m.RegistrationAdmin })),
+);
+const RegistrationJourney = lazy(() =>
+  import("./RegistrationJourney").then((m) => ({
+    default: m.RegistrationJourney,
+  })),
+);
 import { useEffect, useState, useRef } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase";
@@ -38,10 +51,12 @@ export function Events({
   onLocation,
   initialEventId,
   publicPage = false,
+  registrationRoute = false,
   onSignIn,
 }: {
   initialEventId?: string | null;
   publicPage?: boolean;
+  registrationRoute?: boolean;
   onSignIn?: () => void;
   admin: boolean;
   uid?: string;
@@ -50,6 +65,10 @@ export function Events({
   demo: boolean;
   onLocation: (id: string) => void;
 }) {
+  const [registrationAdmin, setRegistrationAdmin] = useState(false);
+  const [registrationConfig, setRegistrationConfig] =
+    useState<RegistrationConfig | null>(null);
+  const [registrationLoaded, setRegistrationLoaded] = useState(false);
   const [managing, setManaging] = useState(false);
   const [choosingLink, setChoosingLink] = useState(false);
   const [search, setSearch] = useState("");
@@ -116,6 +135,21 @@ export function Events({
       setLinking(null);
     }
   }, [!!event]);
+  useEffect(() => {
+    setRegistrationConfig(null);
+    setRegistrationLoaded(false);
+    if (!selected || demo) return;
+    return onSnapshot(
+      doc(db, `events/${selected}/registration/config`),
+      (s) => {
+        setRegistrationConfig(
+          s.exists() ? (s.data() as RegistrationConfig) : null,
+        );
+        setRegistrationLoaded(true);
+      },
+      () => setRegistrationLoaded(true),
+    );
+  }, [selected, demo]);
   async function refreshLinks() {
     if (selected && uid && !demo) {
       const r = await call<{ links: EventLink[] }>("getEventLinks", {
@@ -149,6 +183,28 @@ export function Events({
     await call("manageEvent", { ...data, id: selected, action });
     await refreshLinks();
   }
+  if (registrationAdmin && event && admin)
+    return (
+      <Suspense fallback={<p>Opening registration editor…</p>}>
+        <RegistrationAdmin
+          event={event}
+          onClose={() => setRegistrationAdmin(false)}
+        />
+      </Suspense>
+    );
+  if (registrationRoute && event)
+    return !registrationLoaded ? (
+      <p role="status">Opening registration…</p>
+    ) : (
+      <Suspense fallback={<p>Opening registration…</p>}>
+        <RegistrationJourney
+          key={registrationConfig?.version ?? 0}
+          event={event}
+          config={registrationConfig ?? defaultRegistration()}
+          onClose={() => window.location.assign(`/events/${event.id}`)}
+        />
+      </Suspense>
+    );
   function participantCard(p: EventParticipant) {
     const link = links.find((l) => l.participantId === p.id);
     return (
@@ -226,6 +282,19 @@ export function Events({
             >
               {managing ? "Done managing" : "Manage event"}
             </button>
+          )}
+          {event?.kind === "major" && admin && managing && (
+            <button onClick={() => setRegistrationAdmin(true)}>
+              Registration settings
+            </button>
+          )}
+          {event?.registrationOpen && (
+            <a
+              className="button secondary"
+              href={`/events/${event.id}/register`}
+            >
+              Register for this event
+            </a>
           )}
           {event?.published && admin && (
             <button

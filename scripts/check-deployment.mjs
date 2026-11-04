@@ -11,6 +11,9 @@ assert.equal(tile.status, 200, "The map tile must be available");
 const bytes = Buffer.from(await tile.arrayBuffer());
 assert.equal(bytes.toString("ascii", 8, 12), "WEBP");
 for (const name of [
+  "saveRegistrationForm",
+  "reviewEventRegistration",
+  "connectRegistrationSheet",
   "createCharacter",
   "reviewCharacter",
   "enterLocation",
@@ -39,6 +42,9 @@ for (const name of [
   );
   const body = await response.json();
   const expected = [
+    "saveRegistrationForm",
+    "reviewEventRegistration",
+    "connectRegistrationSheet",
     "publishWorld",
     "reviewCharacter",
     "uploadWorldAsset",
@@ -58,6 +64,21 @@ for (const name of [
   );
   assert.equal(response.status, expected === "PERMISSION_DENIED" ? 403 : 401);
 }
+const registration = await fetch(
+  "https://asia-southeast1-mergingsunapp-2.cloudfunctions.net/submitEventRegistration",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: {} }),
+    signal: AbortSignal.timeout(30000),
+  },
+);
+assert.equal(
+  registration.status,
+  400,
+  "Public registration must validate incomplete requests",
+);
+assert.equal((await registration.json()).error?.status, "INVALID_ARGUMENT");
 console.log(
   "Live smoke checks passed: Hosting, a map tile, and authentication enforcement on all callable functions.",
 );

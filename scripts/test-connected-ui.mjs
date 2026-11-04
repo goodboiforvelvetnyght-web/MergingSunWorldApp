@@ -244,7 +244,10 @@ try {
   await testConnectedWorldUpdate({ page, guest, db, owner, invited });
   const { testConnectedEvents } = await import("./test-connected-events.mjs");
   await testConnectedEvents({ page, guest, db });
-  console.log("Connected browser checks: 6 passed.");
+  const { testConnectedRegistration } =
+    await import("./test-connected-registration.mjs");
+  await testConnectedRegistration({ page, db });
+  console.log("Connected browser checks: 7 passed.");
 } catch (e) {
   console.error(e);
   process.exitCode = 1;

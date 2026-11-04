@@ -186,6 +186,9 @@ jobs:
         run: node scripts/ensure-hosting.mjs
       - name: Enable the API used to check the Firebase billing plan
         run: gcloud services enable cloudbilling.googleapis.com --project "$FIREBASE_PROJECT" --quiet
+      - name: Enable Google Sheets integration API
+        continue-on-error: true
+        run: gcloud services enable sheets.googleapis.com --project "$FIREBASE_PROJECT"
       - name: Check runtime access to the initialized Storage bucket
         run: |
           npx firebase deploy --project "$FIREBASE_PROJECT" --only functions:storageReadiness --non-interactive

@@ -12,6 +12,7 @@ export type EventParticipant = {
   linked: boolean;
 };
 export type WorldEvent = {
+  registrationOpen?: boolean;
   id: string;
   title: string;
   kind: "regular" | "major";

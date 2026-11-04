@@ -910,6 +910,8 @@ try {
   await testLargeMaps({ check, admin, player, other, db });
   const { testEvents } = await import("./test-events.mjs");
   await testEvents({ check, admin, player, other, db });
+  const { testRegistrations } = await import("./test-registrations.mjs");
+  await testRegistrations({ check, admin, player, client, db });
   console.log(`Firebase integration: ${passed} checks passed.`);
   process.exit(0);
 } catch (e) {

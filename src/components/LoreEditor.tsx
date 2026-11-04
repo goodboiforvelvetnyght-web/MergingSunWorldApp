@@ -1,4 +1,6 @@
-import { useEffect } from "react";
+import { call, friendlyError } from "../useWorld";
+import { coverUrl } from "../../shared/assets";
+import { useEffect, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
@@ -17,10 +19,19 @@ import {
 export function LoreEditor({
   value,
   onChange,
+  label = "Location lore",
+  uploadImages = false,
+  onBusyChange,
 }: {
+  label?: string;
+  uploadImages?: boolean;
+  onBusyChange?: (busy: boolean) => void;
   value: string;
   onChange: (html: string) => void;
 }) {
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false),
+    [uploadError, setUploadError] = useState("");
   const editor = useEditor({
     immediatelyRender: false,
     shouldRerenderOnTransaction: true,
@@ -40,7 +51,7 @@ export function LoreEditor({
       attributes: {
         class: "lore-input",
         role: "textbox",
-        "aria-label": "Location lore",
+        "aria-label": label,
         "aria-multiline": "true",
       },
     },
@@ -76,6 +87,59 @@ export function LoreEditor({
   }
   return (
     <div className="rich-editor">
+      {uploadImages && (
+        <>
+          <input
+            ref={fileInput}
+            type="file"
+            hidden
+            accept="image/png,image/jpeg,image/webp"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              setUploading(true);
+              onBusyChange?.(true);
+              setUploadError("");
+              try {
+                if (file.size > 6 * 1024 * 1024)
+                  throw new Error("Choose an image up to 6 MB.");
+                const image = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(String(reader.result));
+                  reader.onerror = () =>
+                    reject(new Error("Could not read image."));
+                  reader.readAsDataURL(file);
+                });
+                const result = await call<{ id: string }>("uploadWorldAsset", {
+                  kind: "cover",
+                  image,
+                });
+                if (!editor.isDestroyed)
+                  editor
+                    .chain()
+                    .focus()
+                    .setImage({ src: coverUrl(result.id), alt: file.name })
+                    .run();
+              } catch (error) {
+                setUploadError(friendlyError(error));
+              } finally {
+                setUploading(false);
+                onBusyChange?.(false);
+              }
+            }}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInput.current?.click()}
+          >
+            {uploading ? "Uploading illustration…" : "Upload illustration"}
+          </button>
+          {uploadError && <p role="alert">{uploadError}</p>}
+        </>
+      )}
+
       <div className="editor-toolbar">
         {[
           {

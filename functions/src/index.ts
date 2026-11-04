@@ -748,3 +748,13 @@ export {
   getEventLinks,
   getEventProfile,
 } from "./events.js";
+
+export {
+  saveRegistrationForm,
+  submitEventRegistration,
+  reviewEventRegistration,
+} from "./registrations.js";
+export {
+  connectRegistrationSheet,
+  syncEventRegistration,
+} from "./registrationSheets.js";

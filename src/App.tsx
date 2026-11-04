@@ -1119,13 +1119,14 @@ export default function App() {
       </main>
     );
   const publicEventMatch = window.location.pathname.match(
-    /^\/events\/([\w-]+)\/?$/,
+    /^\/events\/([\w-]+)(\/register)?\/?$/,
   );
   if (publicEventMatch)
     return (
       <>
         <Events
           publicPage
+          registrationRoute={!!publicEventMatch[2]}
           initialEventId={publicEventMatch[1]}
           admin={cloud.admin}
           uid={cloud.user?.uid}
