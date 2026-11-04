@@ -194,7 +194,7 @@ jobs:
           npx firebase deploy --project "$FIREBASE_PROJECT" --only functions:storageReadiness --non-interactive
           node scripts/check-storage-access.mjs
       - name: Deploy tested site, callable functions, and rules
-        run: npx firebase deploy --project "$FIREBASE_PROJECT" --only firestore:rules,firestore:indexes,functions,hosting,storage --non-interactive
+        run: npx firebase deploy --project "$FIREBASE_PROJECT" --only firestore:rules,firestore:indexes,functions,hosting,storage --non-interactive --force
       - name: Check deployed Hosting and callable endpoints
         run: node scripts/check-deployment.mjs
       - name: Record successful deployment
