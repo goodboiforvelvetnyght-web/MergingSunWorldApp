@@ -1,6 +1,6 @@
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
-import { GoogleAuth } from "google-auth-library";
+import { GoogleAuth, OAuth2Client } from "google-auth-library";
 import { randomUUID } from "node:crypto";
 import { db } from "./firebase.js";
 import { requireAdmin } from "./adminInvitations.js";
@@ -49,70 +49,116 @@ export const connectRegistrationSheet = onCall(
     await requireAdmin(req.auth);
     const id = regId(req.data?.eventId),
       url = String(req.data?.url ?? "");
-    const spreadsheetId =
-      url.match(/\/spreadsheets\/d\/([\w-]+)/)?.[1] ??
-      (/^[\w-]{20,120}$/.test(url) ? url : "");
-    if (!spreadsheetId)
-      throw new HttpsError(
-        "invalid-argument",
-        "Paste a Google spreadsheet URL.",
-      );
-    const e = await db.doc(`events/${id}`).get();
-    if (!e.exists) throw new HttpsError("not-found", "Event not found.");
-    const tab = `Merging Sun ${id.slice(0, 12)}`;
-    try {
-      const metadata = await sheets(
-        `${spreadsheetId}?fields=sheets.properties`,
-      );
-      if (!metadata.sheets?.some((s: any) => s.properties.title === tab))
-        await sheets(`${spreadsheetId}:batchUpdate`, "POST", {
-          requests: [
-            {
-              addSheet: {
-                properties: {
-                  title: tab,
-                  gridProperties: {
-                    rowCount: 5000,
-                    columnCount: 100,
-                    frozenRowCount: 1,
-                  },
+    return configureSheet(id, url);
+  },
+);
+async function configureSheet(id: string, url: string) {
+  const spreadsheetId =
+    url.match(/\/spreadsheets\/d\/([\w-]+)/)?.[1] ??
+    (/^[\w-]{20,120}$/.test(url) ? url : "");
+  if (!spreadsheetId)
+    throw new HttpsError("invalid-argument", "Paste a Google spreadsheet URL.");
+  const e = await db.doc(`events/${id}`).get();
+  if (!e.exists) throw new HttpsError("not-found", "Event not found.");
+  const tab = `Merging Sun ${id.slice(0, 12)}`;
+  try {
+    const metadata = await sheets(`${spreadsheetId}?fields=sheets.properties`);
+    if (!metadata.sheets?.some((s: any) => s.properties.title === tab))
+      await sheets(`${spreadsheetId}:batchUpdate`, "POST", {
+        requests: [
+          {
+            addSheet: {
+              properties: {
+                title: tab,
+                gridProperties: {
+                  rowCount: 5000,
+                  columnCount: 100,
+                  frozenRowCount: 1,
                 },
               },
             },
-          ],
-        });
-    } catch {
-      throw new HttpsError(
-        "failed-precondition",
-        "Could not access this spreadsheet. Share it as Editor with merging-sun-runtime@mergingsunapp-2.iam.gserviceaccount.com and enable the Google Sheets API in project mergingsunapp-2.",
-      );
-    }
-    const sref = db.doc(`registrationSheets/${id}`);
-    await db.runTransaction(async (tx) => {
-      const old = (await tx.get(sref)).data() as Settings | undefined;
-      if ((old?.leaseUntil ?? 0) > Date.now())
-        throw new HttpsError(
-          "aborted",
-          "A spreadsheet update is running. Try connecting again in a moment.",
-        );
-      const same = old?.spreadsheetId === spreadsheetId;
-      tx.set(sref, {
-        spreadsheetId,
-        tab,
-        generation: same ? old!.generation : randomUUID(),
-        nextRow: same ? old!.nextRow : 2,
-        columns: same ? old!.columns : [],
+          },
+        ],
       });
+  } catch {
+    throw new HttpsError(
+      "failed-precondition",
+      "Could not access this spreadsheet. Share it as Editor with merging-sun-runtime@mergingsunapp-2.iam.gserviceaccount.com and enable the Google Sheets API in project mergingsunapp-2.",
+    );
+  }
+  const sref = db.doc(`registrationSheets/${id}`);
+  await db.runTransaction(async (tx) => {
+    const old = (await tx.get(sref)).data() as Settings | undefined;
+    if ((old?.leaseUntil ?? 0) > Date.now())
+      throw new HttpsError(
+        "aborted",
+        "A spreadsheet update is running. Try connecting again in a moment.",
+      );
+    const same = old?.spreadsheetId === spreadsheetId;
+    tx.set(sref, {
+      spreadsheetId,
+      tab,
+      generation: same ? old!.generation : randomUUID(),
+      nextRow: same ? old!.nextRow : 2,
+      columns: same ? old!.columns : [],
     });
-    const rows = await db.collection(`events/${id}/registrations`).get();
-    // Updating a token queues both old requests and previously failed rows for delivery.
-    for (let start = 0; start < rows.size; start += 400) {
-      const batch = db.batch();
-      for (const row of rows.docs.slice(start, start + 400))
-        batch.update(row.ref, { syncToken: Date.now(), syncState: "pending" });
-      await batch.commit();
+  });
+  const rows = await db.collection(`events/${id}/registrations`).get();
+  // Updating a token queues both old requests and previously failed rows for delivery.
+  for (let start = 0; start < rows.size; start += 400) {
+    const batch = db.batch();
+    for (const row of rows.docs.slice(start, start + 400))
+      batch.update(row.ref, { syncToken: Date.now(), syncState: "pending" });
+    await batch.commit();
+  }
+  return { ok: true, tab };
+}
+const deploymentAccount =
+  "github-deploy@mergingsunapp-2.iam.gserviceaccount.com";
+const setupAudience =
+  "https://asia-southeast1-mergingsunapp-2.cloudfunctions.net/configureRegistrationSheetDeployment";
+export const configureRegistrationSheetDeployment = onRequest(
+  { ...options, timeoutSeconds: 120, invoker: [deploymentAccount] },
+  async (req, res) => {
+    // Cloud Run IAM and a verified identity token both restrict this setup route to our deployment account.
+    try {
+      const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+      if (!token) throw new Error("Missing identity");
+      const ticket = await new OAuth2Client().verifyIdToken({
+        idToken: token,
+        audience: setupAudience,
+      });
+      const payload = ticket.getPayload();
+      if (
+        payload?.email !== deploymentAccount ||
+        payload.email_verified !== true
+      )
+        throw new Error("Wrong identity");
+    } catch {
+      res.status(403).json({ error: "Deployment identity required." });
+      return;
     }
-    return { ok: true, tab };
+    if (req.method !== "POST") {
+      res.status(405).end();
+      return;
+    }
+    try {
+      res.json(
+        await configureSheet(
+          regId(req.body?.eventId),
+          String(req.body?.url ?? ""),
+        ),
+      );
+    } catch (error) {
+      res
+        .status(400)
+        .json({
+          error:
+            error instanceof HttpsError
+              ? error.message
+              : "Spreadsheet setup failed.",
+        });
+    }
   },
 );
 export const syncEventRegistration = onDocumentWritten(

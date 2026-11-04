@@ -756,5 +756,6 @@ export {
 } from "./registrations.js";
 export {
   connectRegistrationSheet,
+  configureRegistrationSheetDeployment,
   syncEventRegistration,
 } from "./registrationSheets.js";

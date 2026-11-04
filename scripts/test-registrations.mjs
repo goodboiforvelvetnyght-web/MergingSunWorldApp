@@ -52,6 +52,18 @@ export async function testRegistrations({ check, admin, player, client, db }) {
   await check(
     "public registration is versioned, validated, idempotent and private until admin confirmation",
     async () => {
+      const setupResponse = await fetch(
+        "http://127.0.0.1:5001/demo-merging-sun/asia-southeast1/configureRegistrationSheetDeployment",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: id,
+            url: "https://docs.google.com/spreadsheets/d/test",
+          }),
+        },
+      );
+      assert.equal(setupResponse.status, 403);
       await assert.rejects(
         player.call("saveRegistrationForm", {
           eventId: id,
@@ -200,15 +212,13 @@ export async function testRegistrations({ check, admin, player, client, db }) {
     "Sheets retries update one row by reference, write raw values and preserve organizer columns",
     async () => {
       const ref = db.doc(`events/${id}/registrations/${rid}`);
-      await db
-        .doc(`registrationSheets/${id}`)
-        .set({
-          spreadsheetId: "test-spreadsheet",
-          tab: "Test",
-          generation: "generation",
-          nextRow: 2,
-          columns: [],
-        });
+      await db.doc(`registrationSheets/${id}`).set({
+        spreadsheetId: "test-spreadsheet",
+        tab: "Test",
+        generation: "generation",
+        nextRow: 2,
+        columns: [],
+      });
       let fail = true,
         writes = [],
         rows = [];
