@@ -22,4 +22,4 @@ A Firestore-triggered worker copies new requests and later status/correction cha
 
 No payment details are tracked. Spreadsheet access is an organizer responsibility because the sheet includes private contact information. Do not publish it to the web.
 
-Deployment operators can also run the **Connect event registration spreadsheet** GitHub workflow with an explicit event ID and spreadsheet URL. Its setup endpoint accepts only the deployment service account, enforced by Cloud Run IAM and a verified Google identity token. This avoids requiring an organizer's Firebase login for an authorized setup operation; normal organizer connections still use the admin-only app callable.
+Deployment operators can also run the **Test and deploy Firebase** GitHub workflow with `setup_registration_sheet` enabled with an explicit event ID and spreadsheet URL. Its setup endpoint accepts only the deployment service account, enforced by Cloud Run IAM and a verified Google identity token. This avoids requiring an organizer's Firebase login for an authorized setup operation; normal organizer connections still use the admin-only app callable.
