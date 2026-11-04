@@ -112,7 +112,8 @@ export async function testConnectedWorldUpdate({
   await expect(
     page.locator(".map-alignment-preview .leaflet-tile-loaded").first(),
   )
-    .toBeVisible({ timeout: 15000 })
+    // The first Storage emulator image can wait on cold-start initialization.
+    .toBeVisible({ timeout: 60000 })
     .catch(async (error) => {
       console.log(
         "Alignment diagnostics",
