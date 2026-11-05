@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Model } from "survey-core";
 import { Survey } from "survey-react-ui";
 import "survey-core/survey-core.min.css";
@@ -19,9 +19,10 @@ export function RegistrationRichText({ html }: { html: string }) {
     />
   );
 }
+const RegistrationSurvey = memo(Survey);
 export function RegistrationJourney({
   event,
-  config,
+  config: liveConfig,
   preview = false,
   onClose,
 }: {
@@ -30,6 +31,9 @@ export function RegistrationJourney({
   preview?: boolean;
   onClose: () => void;
 }) {
+  // Freeze the published form for this journey; snapshots must not overwrite active input.
+  const [config] = useState(liveConfig);
+  const versionChanged = liveConfig.version !== config.version;
   const storageKey = `ms:registration:${event.id}:${config.version}`;
   const [initial] = useState(() => {
     try {
@@ -62,8 +66,9 @@ export function RegistrationJourney({
       );
     } catch {}
   }, [storageKey, side, answers, requestId, step, preview]);
-  const model = useMemo(() => {
+  const [model] = useState(() => {
     const m = new Model(registrationSurvey(config));
+    m.textUpdateMode = "onTyping";
     m.data = initial?.answers ?? {};
     m.onTextMarkdown.add((_, options) => {
       options.html = DOMPurify.sanitize(options.text);
@@ -80,9 +85,10 @@ export function RegistrationJourney({
       }
     });
     return m;
-  }, [config]);
+  });
   const selected = side === null ? null : event.sides[side];
   async function submit() {
+    if (versionChanged) return;
     setBusy(true);
     setError("");
     try {
@@ -130,6 +136,34 @@ export function RegistrationJourney({
           {preview ? " · PREVIEW" : ""}
         </span>
       </nav>
+      {versionChanged && step !== "done" && (
+        <section className="registration-error" role="alert">
+          <p>
+            The organizer published an updated registration form. Your current
+            answers are preserved. Review the updated form and terms before
+            submitting.
+          </p>
+          <button
+            disabled={busy}
+            onClick={() => {
+              try {
+                sessionStorage.setItem(
+                  `ms:registration:${event.id}:${liveConfig.version}`,
+                  JSON.stringify({ side, answers: model.data, requestId }),
+                );
+              } catch {
+                setError(
+                  "Could not preserve your answers for reloading. Copy your answers before refreshing this page.",
+                );
+                return;
+              }
+              window.location.reload();
+            }}
+          >
+            Review updated form
+          </button>
+        </section>
+      )}
       {step === "opening" ? (
         <section className="registration-opening">
           <img src="/brand/merging-sun-logo.png" alt="Merging Sun" />
@@ -204,7 +238,7 @@ export function RegistrationJourney({
           <p className="registration-progress">
             {selected?.name} · Registration details
           </p>
-          <Survey model={model} />
+          <RegistrationSurvey model={model} />
           <button onClick={() => setStep("guidance")}>
             Back to side guidance
           </button>
@@ -241,7 +275,7 @@ export function RegistrationJourney({
               Edit answers
             </button>
             <button
-              disabled={busy || !terms || !colors}
+              disabled={busy || !terms || !colors || versionChanged}
               onClick={() => void submit()}
             >
               {busy ? "Submitting…" : "Submit registration request"}

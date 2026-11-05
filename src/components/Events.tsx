@@ -198,7 +198,7 @@ export function Events({
     ) : (
       <Suspense fallback={<p>Opening registration…</p>}>
         <RegistrationJourney
-          key={registrationConfig?.version ?? 0}
+          key={event.id}
           event={event}
           config={registrationConfig ?? defaultRegistration()}
           onClose={() => window.location.assign(`/events/${event.id}`)}

@@ -22,21 +22,17 @@ export async function testConnectedRegistration({ page, db }) {
   await page
     .getByRole("textbox", { name: "Side one costume guidance", exact: true })
     .fill("Wear red and gold.");
-  const sideEditor = page
-    .locator(".rich-editor")
-    .filter({
-      has: page.getByRole("textbox", {
-        name: "Side one costume guidance",
-        exact: true,
-      }),
-    });
-  await sideEditor
-    .locator("input[type=file]")
-    .setInputFiles({
-      name: "costume-example.webp",
-      mimeType: "image/webp",
-      buffer: await readFile("public/brand/background-small.webp"),
-    });
+  const sideEditor = page.locator(".rich-editor").filter({
+    has: page.getByRole("textbox", {
+      name: "Side one costume guidance",
+      exact: true,
+    }),
+  });
+  await sideEditor.locator("input[type=file]").setInputFiles({
+    name: "costume-example.webp",
+    mimeType: "image/webp",
+    buffer: await readFile("public/brand/background-small.webp"),
+  });
   await expect(sideEditor.locator("img")).toBeVisible();
   await page
     .getByRole("button", { name: "Save form draft", exact: true })
@@ -82,9 +78,19 @@ export async function testConnectedRegistration({ page, db }) {
   await visitor
     .getByRole("button", { name: "Continue to registration", exact: true })
     .click();
-  await visitor
-    .getByRole("textbox", { name: /Character name/ })
-    .fill("New Visitor");
+  const characterName = visitor.getByRole("textbox", {
+    name: /Character name/,
+  });
+  await characterName.pressSequentially("New Visi", { delay: 60 });
+  await db
+    .doc(`events/${eventId}/registration/config`)
+    .update({ introduction: "<p>Refreshed background copy</p>" });
+  // Let the real Firestore snapshot arrive while the field is still focused.
+  await visitor.waitForTimeout(800);
+  await expect(characterName).toHaveValue("New Visi");
+  await expect(characterName).toBeFocused();
+  await characterName.pressSequentially("tor", { delay: 60 });
+  await expect(characterName).toHaveValue("New Visitor");
   await visitor
     .getByRole("textbox", { name: /Public player identity/ })
     .fill("Public Visitor");
@@ -101,6 +107,64 @@ export async function testConnectedRegistration({ page, db }) {
     .click();
   await expect(
     visitor.getByRole("heading", { name: "Review your request", exact: true }),
+  ).toBeVisible();
+  const currentConfig = (
+    await db.doc(`events/${eventId}/registration/config`).get()
+  ).data();
+  const updatedConfig = {
+    ...currentConfig,
+    version: currentConfig.version + 1,
+    terms: "<p>Updated event terms for review.</p>",
+  };
+  const publication = db.batch();
+  publication.set(
+    db.doc(`events/${eventId}/registration/config`),
+    updatedConfig,
+  );
+  publication.set(
+    db.doc(`events/${eventId}/registrationVersions/${updatedConfig.version}`),
+    updatedConfig,
+  );
+  await publication.commit();
+  await expect(visitor.getByRole("alert")).toContainText(
+    "Your current answers are preserved",
+  );
+  await expect(
+    visitor.getByRole("heading", { name: "Review your request", exact: true }),
+  ).toBeVisible();
+  await expect(
+    visitor.getByRole("button", {
+      name: "Submit registration request",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await visitor
+    .getByRole("button", { name: "Review updated form", exact: true })
+    .click();
+  await visitor
+    .getByRole("button", { name: "Click to begin", exact: true })
+    .click();
+  await visitor.getByRole("button", { name: "Side one", exact: true }).click();
+  await visitor
+    .getByLabel(
+      "I understand and will follow this side’s costume color requirements.",
+    )
+    .check();
+  await visitor
+    .getByRole("button", { name: "Continue to registration", exact: true })
+    .click();
+  await expect(
+    visitor.getByRole("textbox", { name: /Character name/ }),
+  ).toHaveValue("New Visitor");
+  await visitor.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(
+    visitor.getByRole("textbox", { name: /Phone number/ }),
+  ).toHaveValue("+66 123456789");
+  await visitor
+    .getByRole("button", { name: "Review registration", exact: true })
+    .click();
+  await expect(
+    visitor.getByText("Updated event terms for review.", { exact: true }),
   ).toBeVisible();
   await visitor.getByLabel(/I accept the event terms/).check();
   await visitor
